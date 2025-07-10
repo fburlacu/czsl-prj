@@ -89,10 +89,11 @@ RK: Similarly to classification, use `group_robustness_optim.py` to apply the CL
 ## Citation
 Please cite this work as follows if you find it useful!
 ```bibtex
-@article{berasi2025not,
+@inproceedings{berasi2025not,
   title={Not Only Text: Exploring Compositionality of Visual Representations in Vision-Language Models},
-  author={Davide Berasi and Matteo Farina and Massimiliano Mancini and Elisa Ricci and Nicola Strisciuglio},
-  journal={arXiv preprint arXiv:2503.17142},
+  author={Berasi, Davide and Farina, Matteo and Mancini, Massimiliano and Ricci, Elisa and Strisciuglio, Nicola},
+  booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
+  pages={24917--24927},
   year={2025}
 }
 ```
