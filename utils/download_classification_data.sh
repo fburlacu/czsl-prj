@@ -8,7 +8,8 @@ cd data
 # Download datasets and splits
 wget -c http://wednesday.csail.mit.edu/joseph_result/state_and_transformation/release_dataset.zip -O mitstates.zip
 wget -c http://vision.cs.utexas.edu/projects/finegrained/utzap50k/ut-zap50k-images.zip -O utzap.zip
-wget -c https://www.senthilpurushwalkam.com/publication/compositional/compositional_split_natural.tar.gz -O compositional_split_natural.tar.gz
+#wget -c https://www.senthilpurushwalkam.com/publication/compositional/compositional_split_natural.tar.gz -O compositional_split_natural.tar.gz  # Doesn't work anymore
+wget -c https://senthilpurushwalkam.com/publications/compositional/compositional_split_natural.tar.gz -O compositional_split_natural.tar.gz
 
 # MIT-States
 unzip -q mitstates.zip 'release_dataset/images/*' -d mit-states/
