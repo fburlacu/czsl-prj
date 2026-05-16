@@ -2,6 +2,8 @@ import argparse
 
 import torch
 from clip.model import CLIP
+from factorizers import GDE
+from sphere import calculate_intrinstic_mean, logarithmic_map, exponential_map
 
 from .text_encoder import CustomTextEncoder
 
@@ -16,6 +18,7 @@ class CLIPInterface(torch.nn.Module):
         dtype: torch.dtype = None,
         device: torch.device = "cuda:0",
         enable_pos_emb: bool = False,
+        gde = None
     ):
         """CLIP interface for our custom modules.
 
@@ -39,6 +42,7 @@ class CLIPInterface(torch.nn.Module):
         super().__init__()
 
         self.config = config
+        self.gde = gde # add this as well
 
         self.clip_model = clip_model
 
@@ -102,6 +106,7 @@ class CLIPInterface(torch.nn.Module):
 
         token_tensors = self.construct_token_tensors(idx)
 
+        #we leave this the same
         text_features = self.text_encoder(
             self.token_ids,
             token_tensors,
@@ -111,10 +116,28 @@ class CLIPInterface(torch.nn.Module):
         #_text_features = text_features[idx, :]
         _text_features = text_features
 
+     
+
+
+        #added this we use GDE approx for images instead (we know the indices)
+        if self.gde is not None:
+          print("we inside")
+          new_pair = [
+              (self.gde.attrs[attr_i], self.gde.objs[obj_i])
+              for attr_i, obj_i in idx.tolist()
+          ]
+          image_features = self.gde.compute_ideal_words_approximation(new_pair)
+          image_features = image_features.to(self.device)
+        else:
+          image_features = batch_img
+        
+
         idx_text_features = _text_features / _text_features.norm(
             dim=-1, keepdim=True
         )
-        normalized_img = batch_img / batch_img.norm(dim=-1, keepdim=True)
+
+
+        normalized_img =  image_features  /  image_features.norm(dim=-1, keepdim=True)
         logits = (
             self.clip_model.logit_scale.exp()
             * normalized_img
