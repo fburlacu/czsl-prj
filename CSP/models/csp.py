@@ -4,6 +4,8 @@ import clip
 import pandas as pd
 import torch
 import torch.nn as nn
+
+from factorizers import GDE
 from clip_modules.interface import CLIPInterface
 from clip_modules.model_loader import load
 
@@ -20,6 +22,7 @@ class CSPInterface(CLIPInterface):
         device="cuda:0",
         enable_pos_emb=True,
         attr_dropout=0.0,
+         
     ):
         super().__init__(
             clip_model,
@@ -28,10 +31,13 @@ class CSPInterface(CLIPInterface):
             soft_embeddings,
             device=device,
             enable_pos_emb=enable_pos_emb,
+           
         )
 
         self.offset = offset
         self.attr_dropout = nn.Dropout(attr_dropout)
+
+
 
     def construct_token_tensors(self, pair_idx):
         """Function creates the token tensor for further inference.
@@ -128,6 +134,22 @@ def get_csp(train_dataset, config, device):
         weight_decay=config.weight_decay,
     )
 
+    def get_img_embeddings(clip_model, dataset, device):
+      loader = torch.utils.data.DataLoader(dataset, batch_size=64)
+      emb_list = []
+
+      with torch.no_grad(): #impt
+        for x in loader:
+          image = x[0].to(device)
+          embedding = clip_model.encode_image(image)
+          emb_list.append(embedding)
+        return torch.cat(emb_list)
+
+    img_embedding = get_img_embeddings(clip_model, train_dataset, device)
+    train_pairs_labels = [(attr, obj) for attr, obj, _ in train_dataset.data]
+    print("here",  train_pairs_labels )
+    gde = GDE(img_embedding , train_pairs_labels)  #changes
+
     interface = CSPInterface(
         clip_model,
         config,
@@ -135,7 +157,8 @@ def get_csp(train_dataset, config, device):
         soft_embedding,
         class_token_ids,
         device,
-        attr_dropout=config.attr_dropout
+        attr_dropout=config.attr_dropout,
+        gde = gde
     )
 
     return interface, optimizer
@@ -170,7 +193,8 @@ def get_mix_csp(train_dataset, config, device):
         subset_soft_embeddings,
         class_token_ids,
         device,
-        attr_dropout=config.attr_dropout
+        attr_dropout=config.attr_dropout,
+        gde = None
     )
 
     return interface, optimizer
