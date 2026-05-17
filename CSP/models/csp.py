@@ -22,6 +22,7 @@ class CSPInterface(CLIPInterface):
         device="cuda:0",
         enable_pos_emb=True,
         attr_dropout=0.0,
+        gde = GDE
          
     ):
         super().__init__(
@@ -147,7 +148,6 @@ def get_csp(train_dataset, config, device):
 
     img_embedding = get_img_embeddings(clip_model, train_dataset, device)
     train_pairs_labels = [(attr, obj) for attr, obj, _ in train_dataset.data]
-    print("here",  train_pairs_labels )
     gde = GDE(img_embedding , train_pairs_labels)  #changes
 
     interface = CSPInterface(

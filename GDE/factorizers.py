@@ -154,6 +154,10 @@ class GDE(CompositionalFactorizer):
     name = 'GDE'
     
     def compute_ideal_words(self, embeddings, all_pairs_gt, weights):
+        embeddings = embeddings.float()  
+        if weights is not None:
+            weights = weights.float()    
+    
         intrinsic_mean = calculate_intrinstic_mean(embeddings, weights, init='normalized mean')  # mu
 
         # 1) Map embedding to the tangent space T_muS^n

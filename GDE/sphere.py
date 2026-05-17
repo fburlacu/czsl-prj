@@ -22,7 +22,7 @@ def orthogonal_projection(s, w, device='cuda'):
     # Calculate orthogonal projection
     I_ = torch.eye(dim, device=device)
     P = I_ - s.unsqueeze(1) @ s.unsqueeze(1).T
-
+    P = P.to(w.dtype) #ensuring the same precision
     return w.view(-1, dim) @ P.T
 
 
