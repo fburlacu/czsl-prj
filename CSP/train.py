@@ -232,6 +232,7 @@ if __name__ == "__main__":
         pickle.dump(config, fp)
 
     if config.save_model:
+        os.makedirs(config.save_path, exist_ok=True)
         torch.save(
             model.dict(),
             os.path.join(

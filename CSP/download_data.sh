@@ -33,7 +33,7 @@ unzip -q cgqa.zip
 # Download new splits for Purushwalkam et. al
 tar -zxvf compositional_split_natural.tar.gz
 
-cd $CURRENT_DIR/CSP
-python datasets/reorganize_utzap.py
+# cd $CURRENT_DIR/CSP
+python CSP/datasets/reorganize_utzap.py
 
 mv data/ut-zap50k data/ut-zappos
