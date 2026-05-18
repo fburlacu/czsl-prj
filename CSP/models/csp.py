@@ -58,12 +58,12 @@ class CSPInterface(CLIPInterface):
         ).type(self.clip_model.dtype)
 
         eos_idx = int(self.token_ids[0].argmax())
-        soft_embeddings = self.attr_dropout(self.soft_embeddings)
+        soft_embeddings = self.attr_dropout(self.soft_embeddings).cpu()
         token_tensor[:, eos_idx - 2, :] = soft_embeddings[
-            attr_idx
+            attr_idx.cpu()
         ].type(self.clip_model.dtype)
         token_tensor[:, eos_idx - 1, :] = soft_embeddings[
-            obj_idx + self.offset
+            obj_idx.cpu() + self.offset
         ].type(self.clip_model.dtype)
 
         return token_tensor
