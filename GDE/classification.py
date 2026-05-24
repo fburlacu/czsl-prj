@@ -30,35 +30,81 @@ class Evaluator:
         self.dset = dset
 
         if dset.phase == 'train':
-            test_pair_set = set(dset.train_pairs)
-            test_pair_gt = set(dset.train_pairs)
+            # test_pair_set = set(dset.train_pairs)
+            # test_pair_gt  = set(dset.train_pairs)
+
+
+            test_triplets_set = set(dset.train_triplets)  #added those
+            test_triplets_gt  = set(dset.train_triplets)
+
+
         elif dset.phase == 'val':
-            test_pair_set = set(dset.val_pairs + dset.train_pairs)
-            test_pair_gt = set(dset.val_pairs)
+            # test_pair_set = set(dset.val_pairs + dset.train_pairs)
+            # test_pair_gt  = set(dset.val_pairs)
+
+
+            test_triplets_set = set(dset.val_triplets + dset.train_triplets)  #added those
+            test_triplets_gt  = set(dset.val_triplets)
         else:
-            test_pair_set = set(dset.test_pairs + dset.train_pairs)
-            test_pair_gt = set(dset.test_pairs)
+            # test_pair_set = set(dset.test_pairs + dset.train_pairs)
+            # test_pair_gt  = set(dset.test_pairs)
+
+
+            test_triplets_set = set(dset.test_triplets + dset.train_triplets)  #added those
+            test_triplets_gt  = set(dset.test_triplets)
         
         # labels in closed world scenario
+        # if not dset.open_world:
+        #     self.closed_mask = torch.BoolTensor(
+        #         [1 if pair in test_pair_set else 0 for pair in dset.pairs]
+        #     )
+
+
         if not dset.open_world:
             self.closed_mask = torch.BoolTensor(
-                [1 if pair in test_pair_set else 0 for pair in dset.pairs]
+                [1 if triplets in test_triplets_set else 0 for triplets in dset.triplets]
             )
 
         # Mask of seen concepts
-        self.seen_pair_set = set(dset.train_pairs)
-        mask = [1 if pair in self.seen_pair_set else 0 for pair in dset.pairs]
+        # self.seen_pair_set = set(dset.train_pairs)
+        self.seen_triplets_set = set(dset.train_triplets)
+
+
+        # mask = [1 if pair in self.seen_pair_set else 0 for pair in dset.pairs]
+        mask = [1 if triplets in self.seen_triplets_set else 0 for triplets in dset.triplets]
         self.seen_mask = torch.BoolTensor(mask)
 
         # pairs as (attr_idx, obj_idx)
-        self.pair_idx2ao_idx = torch.LongTensor([
-            (dset.attr2idx[attr], dset.obj2idx[obj]) for attr, obj in dset.pairs
+        # self.pair_idx2ao_idx = torch.LongTensor([
+        #     (dset.attr2idx[attr], dset.obj2idx[obj]) for attr, obj in dset.pairs
+        #])
+
+        # self.pair_idx2ao_idx = torch.LongTensor([
+        #     (dset.attr2idx[attr], dset.obj2idx[obj]) for attr, obj in dset.pairs
+        # ])
+
+        self.triplets_idx2aoa_idx = torch.LongTensor([    
+            (dset.attr1_idx[attr], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr, obj, attr2 in dset.triplets        #new new
         ])
 
-    def get_attr_obj_from_pairs(self, pairs):
-        attrs = self.pair_idx2ao_idx[pairs, 0]
-        objs = self.pair_idx2ao_idx[pairs, 1]
-        return attrs, objs
+
+
+
+    #only deals with two entities (attrbute and object) 
+    # def get_attr_obj_from_pairs(self, pairs):
+    #     attrs = self.pair_idx2ao_idx[pairs, 0]
+    #     objs = self.pair_idx2ao_idx[pairs, 1]
+    #     return attrs, objs
+    
+
+    # i added this now for triplets :)
+    def get_attr1_obj_attr2_from_triplets(self, triplets):
+        attrs1 =  self.triplets_idx2aoa_idx[triplets, 0]
+        objs   =  self.triplets_idx2aoa_idx[triplets, 1]
+        attrs2 =  self.triplets_idx2aoa_idx[triplets, 2]
+        return attrs1, objs , attrs2
+    
+
 
     def evaluate(self, y_pred_topk, y_true, seen_ids, unseen_ids):
         """ Evaluate predictions."""
@@ -86,53 +132,97 @@ class Evaluator:
         if not self.dset.open_world:
             scores[:, ~self.closed_mask] = -1e10
 
-        _, pair_preds = scores.topk(topk, dim=1)
-        attr_preds, obj_preds = self.get_attr_obj_from_pairs(pair_preds)
+        # _, pair_preds = scores.topk(topk, dim=1)
+        _, triplets_preds =  scores.topk(topk, dim=1)
+        # attr_preds, obj_preds = self.get_attr_obj_from_pairs(pair_preds)
+        attr1_preds, obj_preds, attr2_preds = self.get_attr1_obj_attr2_from_triplets(triplets_preds)  # i added this so we can use ent_preds and send it to get each one seperately
 
-        return pair_preds, attr_preds, obj_preds
+        return triplets_preds, attr1_preds, obj_preds, attr2_preds
     
-    def get_overall_metrics(self, features, all_pairs_true, topk_list=[1], progress_bar=True):
+    def get_overall_metrics(self, features, all_triplets_true, topk_list=[1], progress_bar=True):  #completely changed this
+
+        # labels = torch.LongTensor(
+        #     [self.dset.pair2idx[pair] for pair in all_pairs_true]
+        # )
+
+        # # seen/unseen samples
+        # seen_ids = [
+        #     i for i in range(len(all_pairs_true)) if all_pairs_true[i] in self.seen_pair_set
+        # ]
+        # unseen_ids = [
+        #     i for i in range(len(all_pairs_true)) if all_pairs_true[i] not in self.seen_pair_set
+        # ]
+
+
 
         labels = torch.LongTensor(
-            [self.dset.pair2idx[pair] for pair in all_pairs_true]
+            [self.dset.triplets2idx[triplet] for triplet in all_triplets_true]
         )
 
         # seen/unseen samples
         seen_ids = [
-            i for i in range(len(all_pairs_true)) if all_pairs_true[i] in self.seen_pair_set
+            i for i in range(len(all_triplets_true)) if all_triplets_true[i] in self.seen_triplets_set
         ]
         unseen_ids = [
-            i for i in range(len(all_pairs_true)) if all_pairs_true[i] not in self.seen_pair_set
+            i for i in range(len(all_triplets_true)) if all_triplets_true[i] not in self.seen_triplets_set
         ]
+
+
 
         overall_metrics = {}
         for topk in topk_list:
             # Get model's performance (accuracy) from unbiased features
-            pair_preds, attr_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
-            attr_true, obj_true = self.get_attr_obj_from_pairs(labels)
+
+
+
+            #pair_preds, attr_preds, obj_preds= self.predict(features, topk=topk, bias=0.)
+
+
+
+            #replaced with this
+            triplets_preds, attr1_preds, obj_preds, attr2_preds = self.predict(features, topk=topk, bias=0.)
+
+
+
+            # attr_true, obj_true, = self.get_attr_obj_from_pairs(labels)
+
+            attr1_true, obj_true, attr2_true = self.get_attr1_obj_attr2_from_triplets(labels)
             
-            unbiased_pair_acc = self.evaluate(
-                pair_preds, labels, seen_ids, unseen_ids)['all_acc']
+            # unbiased_pair_acc = self.evaluate(
+            #     pair_preds, labels, seen_ids, unseen_ids)['all_acc']
+
+
+            unbiased_triplets_acc = self.evaluate(
+                triplets_preds, labels, seen_ids, unseen_ids)['all_acc']
             
-            attr_acc = self.evaluate(
-                attr_preds, attr_true, seen_ids, unseen_ids)['all_acc']
+            attr1_acc = self.evaluate(
+                attr1_preds, attr1_true, seen_ids, unseen_ids)['all_acc']
             
             obj_acc = self.evaluate(
                 obj_preds, obj_true, seen_ids, unseen_ids)['all_acc']
 
+            #also added this so account the accurcay of just the third entity on its own
+            attr2_acc = self.evaluate(
+                attr2_preds, attr2_true, seen_ids, unseen_ids)['all_acc']
+
             # Get model's performance (accuracy) on seen/unseen pairs
             bias = 1e3
-            pair_preds, _, _ = self.predict(features, topk=topk, bias=1e3) # bias = +inf => predict only unseen pairs
+            #pair_preds, _, _ ,= self.predict(features, topk=topk, bias=1e3) # bias = +inf => predict only unseen pairs
+            triplets_preds, _, _ , _= self.predict(features, topk=topk, bias=1e3) #added this as well
             full_unseen_metrics = self.evaluate(
-                pair_preds, labels, seen_ids, unseen_ids)
+                triplets_preds, labels, seen_ids, unseen_ids)
 
             # Get predicted probability distribution of unseen pairs,
             # and the top K scores of seen pairs in the predicted prob. distribution of unseen pairs
             correct_scores = features[np.arange(len(features)), labels][unseen_ids]
             max_seen_scores = features[unseen_ids][:, self.seen_mask].topk(topk, dim=1)[0][:,topk-1]
             # Compute biases
-            pairs_correct = torch.eq(pair_preds, labels.unsqueeze(1)).any(1).numpy()
-            unseen_correct = pairs_correct[unseen_ids]
+            # pairs_correct = torch.eq(pair_preds, labels.unsqueeze(1)).any(1).numpy()
+
+            triplets_correct = torch.eq(triplets_preds, labels.unsqueeze(1)).any(1).numpy()
+
+            # unseen_correct = pairs_correct[unseen_ids]
+            unseen_correct = triplets_correct[unseen_ids]
             unseen_score_diff = max_seen_scores - correct_scores
             correct_unseen_score_diff = unseen_score_diff[unseen_correct] - 1e-4
             correct_unseen_score_diff = torch.sort(correct_unseen_score_diff)[0]
@@ -143,9 +233,19 @@ class Evaluator:
             # Get biased predictions and metrics with different biases
             all_metrics = []
             for bias in tqdm(bias_list, disable=not progress_bar):
-                pair_preds, _, _ = self.predict(features, topk=topk, bias=bias)
+                # pair_preds, _, _ = self.predict(features, topk=topk, bias=bias)
+
+
+                triplets_preds, _, _, _  = self.predict(features, topk=topk, bias=bias)
+
+                
+                # metrics = self.evaluate(
+                #     pair_preds, labels, seen_ids, unseen_ids)
+                
+
                 metrics = self.evaluate(
-                    pair_preds, labels, seen_ids, unseen_ids)
+                    triplets_preds, labels, seen_ids, unseen_ids)
+                
                 all_metrics.append(metrics)
             all_metrics.append(full_unseen_metrics)
 
@@ -160,9 +260,11 @@ class Evaluator:
             overall_metrics[topk] = {
                 #"seen_accs": seen_accs.tolist(),
                 #"unseen_accs": unseen_accs.tolist(),
-                "unbiased_pair_acc": unbiased_pair_acc,
-                "attr_acc": attr_acc,
-                "obj_acc": obj_acc,
+                # "unbiased_pair_acc": unbiased_pair_acc,
+                "unbiased_triplets_acc": unbiased_triplets_acc,
+                "attr1_acc": attr1_acc,
+                "obj_acc"  : obj_acc,
+                "attr2_acc" : attr2_acc,  #attribute 2 accurcay on its own 
                 "best_seen_acc": best_seen_acc,
                 "best_unseen_acc": best_unseen_acc,
                 "best_harmonic_mean": best_harmonic_mean,
@@ -170,90 +272,205 @@ class Evaluator:
             }
         return overall_metrics
     
-    def get_fast_metrics(self, features, all_pairs_true, topk_list=[1]):
+
+
+    
+    def get_fast_metrics(self, features, all_triplets_true, topk_list=[1]):   #added third entity
         '''Compute all metrics except auc. It is much faster than self.get_overall_metrics'''
 
+        # labels = torch.LongTensor(
+        #     [self.dset.pair2idx[pair] for pair in all_pairs_true]
+        # )
+        # attr_true, obj_true = self.get_attr_obj_from_pairs(labels)
+
+        # # seen/unseen samples
+        # seen_ids = [
+        #     i for i in range(len(all_pairs_true)) if all_pairs_true[i] in self.seen_pair_set
+        # ]
+        # unseen_ids = [
+        #     i for i in range(len(all_pairs_true)) if all_pairs_true[i] not in self.seen_pair_set
+        # ]
+
+
+
         labels = torch.LongTensor(
-            [self.dset.pair2idx[pair] for pair in all_pairs_true]
+            [self.dset.triplets2idx[triplets] for triplets in all_triplets_true]
         )
-        attr_true, obj_true = self.get_attr_obj_from_pairs(labels)
+        attr1_true, obj_true, attr2_true = self.get_attr1_obj_attr2_from_triplets(labels)
 
         # seen/unseen samples
         seen_ids = [
-            i for i in range(len(all_pairs_true)) if all_pairs_true[i] in self.seen_pair_set
+            i for i in range(len(all_triplets_true)) if all_triplets_true[i] in self.seen_triplets_set
         ]
         unseen_ids = [
-            i for i in range(len(all_pairs_true)) if all_pairs_true[i] not in self.seen_pair_set
+            i for i in range(len(all_triplets_true)) if all_triplets_true[i] not in self.seen_triplets_set
         ]
+
+
 
         fast_metrics = {}
         for topk in topk_list:
             # Get model's performance (accuracy) from unbiased features
-            pair_preds, attr_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
+
+
+            # pair_preds, attr_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
+
+            triplets_preds, attr1_preds, obj_preds, attr2_preds = self.predict(features, topk=topk, bias=0.)
             
-            unbiased_pair_acc = self.evaluate(
-                pair_preds, labels, seen_ids, unseen_ids)['all_acc']
+            # unbiased_pair_acc = self.evaluate(
+            #     pair_preds, labels, seen_ids, unseen_ids)['all_acc']
             
-            attr_acc = self.evaluate(
-                attr_preds, attr_true, seen_ids, unseen_ids)['all_acc']
+            # attr_acc = self.evaluate(
+            #     attr_preds, attr_true, seen_ids, unseen_ids)['all_acc']
+            
+            # obj_acc = self.evaluate(
+            #     obj_preds, obj_true, seen_ids, unseen_ids)['all_acc']
+
+
+
+            unbiased_triplets_acc = self.evaluate(
+                triplets_preds, labels, seen_ids, unseen_ids)['all_acc']
+            
+            attr1_acc = self.evaluate(
+                attr1_preds, attr1_true, seen_ids, unseen_ids)['all_acc']
             
             obj_acc = self.evaluate(
-                obj_preds, obj_true, seen_ids, unseen_ids)['all_acc']
+             obj_preds, obj_true, seen_ids, unseen_ids)['all_acc']
+            
+            attr2_acc = self.evaluate(
+             attr2_preds, attr2_true, seen_ids, unseen_ids)['all_acc']
+
+            
+
+        
+
+
+
+            
             
             # Get model performance for best seen (bias = -inf)
-            pair_preds, _, _ = self.predict(features, topk=topk, bias=-1e3) # bias = -inf => predict only seen pairs
-            best_seen_acc = self.evaluate(
-                pair_preds, labels, seen_ids, unseen_ids)['seen_acc']
+            # pair_preds, _, _ = self.predict(features, topk=topk, bias=-1e3) # bias = -inf => predict only seen pairs
+            # best_seen_acc = self.evaluate(
+            #     pair_preds, labels, seen_ids, unseen_ids)['seen_acc']
             
+
+
+
+            triplets_preds, _, _ , _ = self.predict(features, topk=topk, bias=-1e3) # bias = -inf => predict only seen pairs
+            best_seen_acc = self.evaluate(
+                triplets_preds, labels, seen_ids, unseen_ids)['seen_acc']
+            
+
+
+
+
+
             # Get model performance for best unseen (bias = +inf)
-            pair_preds, _, _ = self.predict(features, topk=topk, bias=1e3) # bias = +inf => predict only unseen pairs
+            triplets_preds, _, _ , _ = self.predict(features, topk=topk, bias=1e3) # bias = +inf => predict only unseen pairs
             best_unseen_acc = self.evaluate(
-                pair_preds, labels, seen_ids, unseen_ids)['unseen_acc']
+                triplets_preds, labels, seen_ids, unseen_ids)['unseen_acc']
+
+
+
+            # pair_preds, _, _ = self.predict(features, topk=topk, bias=1e3) # bias = +inf => predict only unseen pairs
+            # best_unseen_acc = self.evaluate(
+            #     pair_preds, labels, seen_ids, unseen_ids)['unseen_acc']
 
             fast_metrics[topk] = {
-                "unbiased_pair_acc": unbiased_pair_acc,
-                "attr_acc": attr_acc,
+                "unbiased_triplets_acc": unbiased_triplets_acc,
+                "attr1_acc": attr1_acc,
                 "obj_acc": obj_acc,
+                "attr2_acc" : attr2_acc,
                 "best_seen_acc": best_seen_acc,
                 "best_unseen_acc": best_unseen_acc,
             }
         return fast_metrics
 
 
-def select_n_embs_per_pair(embeddings, all_pairs, n: int):
+# def select_n_embs_per_pair(embeddings, all_pairs, n: int):
+#     '''Randomly selects up to n embeddings for each pair.'''
+#     # Create dict pair->list[embeddings]
+#     unique_pairs = sorted(set(all_pairs))
+#     pair_idx2img_embs = {pair: [] for pair in unique_pairs}
+#     for i, pair in enumerate(all_pairs):
+#         pair_idx2img_embs[pair].append(embeddings[i])
+
+#     # Select (at most) n embeddings for each pair
+#     selected_embs, selected_all_pairs = [], []
+#     for pair in unique_pairs:
+#         pair_reps = pair_idx2img_embs[pair]
+#         k = min(n, len(pair_reps))
+#         sampled_reps = random.sample(pair_reps, k)
+#         selected_embs += sampled_reps
+#         selected_all_pairs += [pair] * k
+#     selected_embs = torch.stack(selected_embs)
+#     return selected_embs, selected_all_pairs
+
+
+
+def select_n_embs_per_triplets(embeddings, all_triplets, n: int):  #new embeddings that can handle triplets takes any n embeddings
     '''Randomly selects up to n embeddings for each pair.'''
     # Create dict pair->list[embeddings]
-    unique_pairs = sorted(set(all_pairs))
-    pair_idx2img_embs = {pair: [] for pair in unique_pairs}
-    for i, pair in enumerate(all_pairs):
-        pair_idx2img_embs[pair].append(embeddings[i])
+    unique_triplets = sorted(set(all_triplets))
+    triplets_idx2img_embs = {triplets: [] for triplets in unique_triplets}
+    for i, triplets in enumerate(all_triplets):
+        triplets_idx2img_embs[triplets].append(embeddings[i])
 
     # Select (at most) n embeddings for each pair
-    selected_embs, selected_all_pairs = [], []
-    for pair in unique_pairs:
-        pair_reps = pair_idx2img_embs[pair]
-        k = min(n, len(pair_reps))
-        sampled_reps = random.sample(pair_reps, k)
+    selected_embs, selected_all_triplets = [], []
+    for triplets in unique_triplets:
+        triplets_reps = triplets_idx2img_embs[triplets]
+        k = min(n, len(triplets_reps))
+        sampled_reps = random.sample(triplets_reps, k)
         selected_embs += sampled_reps
-        selected_all_pairs += [pair] * k
+        selected_all_triplets += [triplets] * k
     selected_embs = torch.stack(selected_embs)
-    return selected_embs, selected_all_pairs
+    return selected_embs, selected_all_triplets
 
 
-def compute_logits(image_embs, label_embs):
+def compute_logits(image_embs, label_embs):  #same
     logit_scale = exp(0.07)
     logit_scale = logit_scale if logit_scale<=100.0 else 100.0
     logits = logit_scale * image_embs @ label_embs.t()
     return logits.to('cpu')
 
 
-def compute_weights(embs_for_IW, all_pairs_IW, train_dataset, use_clip_score=False, temperature=0.01, probs_type='clip'):
+# def compute_weights(embs_for_IW, all_pairs_IW, train_dataset, use_clip_score=False, temperature=0.01, probs_type='clip'):
+#     device = embs_for_IW.device
+#     if len(set(all_pairs_IW))==len(all_pairs_IW):
+#         weights = None
+#     else:
+#         if use_clip_score:  # Use CLIP Weights (only in image modality)
+#             text_embs = train_dataset.load_text_embs(all_pairs_IW)
+#             logits = torch.sum(embs_for_IW * text_embs, dim=1)
+#             T = temperature
+#             if probs_type=='clip':
+#                 weights = torch.exp(logits / float(T))
+#             elif probs_type=='SigLIP':
+#                 logit_bias = -16.54513931274414
+#                 weights = torch.sigmoid(logits / float(T) + logit_bias)           
+#         else:
+#             weights = torch.ones(len(all_pairs_IW)).float().to(device)  # Uniform weights within pairs
+
+#         # Normalize within pair:
+#         _, inverse = np.unique(all_pairs_IW, axis=0, return_inverse=True)
+#         inverse = torch.LongTensor(inverse).to(device)
+#         group_sums = torch.bincount(inverse, weights=weights).float()
+#         weights /= group_sums[inverse]
+#     return weights
+
+
+
+
+def compute_weights(embs_for_IW, all_triplets_IW, train_dataset, use_clip_score=False, temperature=0.01, probs_type='clip'):  #alos changed
+
+
     device = embs_for_IW.device
-    if len(set(all_pairs_IW))==len(all_pairs_IW):
+    if len(set(all_triplets_IW))==len(all_triplets_IW):
         weights = None
     else:
         if use_clip_score:  # Use CLIP Weights (only in image modality)
-            text_embs = train_dataset.load_text_embs(all_pairs_IW)
+            text_embs = train_dataset.load_text_embs(all_triplets_IW)
             logits = torch.sum(embs_for_IW * text_embs, dim=1)
             T = temperature
             if probs_type=='clip':
@@ -262,15 +479,14 @@ def compute_weights(embs_for_IW, all_pairs_IW, train_dataset, use_clip_score=Fal
                 logit_bias = -16.54513931274414
                 weights = torch.sigmoid(logits / float(T) + logit_bias)           
         else:
-            weights = torch.ones(len(all_pairs_IW)).float().to(device)  # Uniform weights within pairs
+            weights = torch.ones(len(all_triplets_IW)).float().to(device)  # Uniform weights within pairs
 
         # Normalize within pair:
-        _, inverse = np.unique(all_pairs_IW, axis=0, return_inverse=True)
+        _, inverse = np.unique(all_triplets_IW, axis=0, return_inverse=True)
         inverse = torch.LongTensor(inverse).to(device)
         group_sums = torch.bincount(inverse, weights=weights).float()
         weights /= group_sums[inverse]
     return weights
-
 
 def main(config: argparse.Namespace, verbose=False):
     if config.experiment_name != 'clip' and config.modality_IW is None:
@@ -308,8 +524,9 @@ def main(config: argparse.Namespace, verbose=False):
         # Compute representations for test pairs
         if config.experiment_name == 'clip':
             # Representations are clip text embeddings:
-            test_pair_embs = test_dataset.load_text_embs(test_dataset.pairs)
-        else:
+            # test_pair_embs = test_dataset.load_text_embs(test_dataset.pairs)
+            test_triplets_embs  =  test_dataset.load_text_embs(test_dataset.triplets)  #replaced this
+        else:  
             # Representations are ideal words approximations:
             
             # 1) Prepare the embeddings that will be used to compute the ideal words (primitive directions in the optimal decomposition)
@@ -321,10 +538,15 @@ def main(config: argparse.Namespace, verbose=False):
                 embs_for_IW = train_dataset.load_text_embs(all_pairs_IW)
             elif config.modality_IW == 'image':
                 embs_for_IW, all_pairs_IW = train_dataset.load_all_image_embs()
+                # if config.n_images is not None:
+                #     embs_for_IW, all_pairs_IW = select_n_embs_per_pair(
+                #         embs_for_IW, all_pairs_IW, n=config.n_images
+                #     )
                 if config.n_images is not None:
-                    embs_for_IW, all_pairs_IW = select_n_embs_per_pair(
+                    embs_for_IW, all_pairs_IW = select_n_embs_per_triplets(   #added this
                         embs_for_IW, all_pairs_IW, n=config.n_images
                     )
+
 
             # 2) Compute noise distribution
             if 'CW' in config.experiment_name:  # Use CLIP Weights (only in image modality)
@@ -342,21 +564,36 @@ def main(config: argparse.Namespace, verbose=False):
             factorizer = Factorizer(embs_for_IW, all_pairs_IW, weights)
             
             # 4) Compute pair representations combining ideal words
-            test_pair_embs = factorizer.compute_ideal_words_approximation(
-                target_pairs=test_dataset.pairs
+            # test_pair_embs = factorizer.compute_ideal_words_approximation(
+            #     target_pairs=test_dataset.pairs
+            #     )
+
+            test_triplets_embs = factorizer.compute_ideal_words_approximation(   #added this 
+                target_triplets=test_dataset.triplets
                 )
         
         # Compute predictions
-        image_embs, all_pairs_true = test_dataset.load_all_image_embs()
-        image_embs = image_embs.to(device)
-        test_pair_embs = test_pair_embs.to(device)
+        # image_embs, all_pairs_true  = test_dataset.load_all_image_embs()
 
-        logits = compute_logits(image_embs, test_pair_embs)
+
+        image_embs, all_triplets_true = test_dataset.load_all_image_embs()
+        image_embs = image_embs.to(device)
+
+
+        # test_pair_embs = test_pair_embs.to(device)
+
+
+        test_triplets_embs = test_triplets_embs.to(device)
+        logits = compute_logits(image_embs, test_triplets_embs)
+
+
+
+        # logits = compute_logits(image_embs, test_pair_embs)
 
         # Evaluate predictions
         evaluator = Evaluator(test_dataset)
         result = evaluator.get_overall_metrics(logits,
-                                               all_pairs_true,
+                                               all_triplets_true,
                                                progress_bar=False)[1]  # topk=1
 
         all_results.append(result)
@@ -411,7 +648,7 @@ if __name__ == '__main__':
         type=str, default=None)
     parser.add_argument(
         "--n_images",
-        help="limit the number of images per pair in IW computation with image modality",
+        help="limit the number of images per triplets in IW computation with image modality",
         type=int, default=None)
     parser.add_argument(
         "--open_world",
