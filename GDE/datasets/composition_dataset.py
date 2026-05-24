@@ -95,11 +95,12 @@ class CompositionDataset(Dataset):
         self.transform = transform
         self.loader = ImageLoader(self.root + '/images/')
 
-        self.attrs, self.objs, self.pairs, \
-                self.train_pairs, self.val_pairs, \
-                self.test_pairs = self.parse_split()
-        
-        self.full_pairs = list(product(self.attrs, self.objs))
+
+        #added attrs1 and attrs2 for hadling 2 attribute positions in the pair
+        self.attrs1, self.attrs2, self.objs, self.pairs, self.train_pairs, self.val_pairs, self.test_pairs = self.parse_split()
+
+        #product done with 3-positional pairs
+        self.full_pairs = list(product(self.attrs1, self.attrs2, self.objs))
         if self.open_world:
             self.pairs = self.full_pairs
         
@@ -113,11 +114,12 @@ class CompositionDataset(Dataset):
             self.data = self.test_data
         else: # get all data
             self.data = self.train_data + self.val_data + self.test_data
-        _, self.all_attrs, self.all_objs = zip(*self.data)
-        self.all_pairs = list(zip(self.all_attrs, self.all_objs))
+        _, self.all_attrs1, self.all_attrs2, self.all_objs = zip(*self.data)
+        self.all_pairs = list(zip(self.all_attrs1, self.all_attrs2, self.all_objs))
 
         self.obj2idx = {obj: idx for idx, obj in enumerate(self.objs)}
-        self.attr2idx = {attr: idx for idx, attr in enumerate(self.attrs)}
+        self.attr1idx = {attr: idx for idx, attr in enumerate(self.attrs1)} #new
+        self.attr2idx = {attr: idx for idx, attr in enumerate(self.attrs2)} #new
         self.pair2idx = {pair: idx for idx, pair in enumerate(self.pairs)}
 
         self.train_pair_to_idx = dict(
@@ -130,27 +132,26 @@ class CompositionDataset(Dataset):
             [pair in seen_pairs for pair in self.pairs]
             )
 
-        self.objs_by_attr= {k: [] for k in self.attrs}
+        self.objs_by_attr= {(a1, a2): [] for (a1, a2, o) in self.pairs} 
         self.attrs_by_obj = {k: [] for k in self.objs}
-        for (a, o) in self.all_pairs:
-            self.objs_by_attr[a].append(o)
-            self.attrs_by_obj[o].append(a)
+        for (a1, a2, o) in self.all_pairs:
+            self.objs_by_attr[(a1, a2)].append(o)
+            self.attrs_by_obj[o].append((a1, a2))
 
     def get_split_info(self):
         data = torch.load(self.root + '/metadata_{}.t7'.format(self.split), weights_only=False)
         train_data, val_data, test_data = [], [], []
         pairs = set(self.pairs)
         for instance in data:
-            image, attr, obj, settype = instance['image'], instance[
-                'attr'], instance['obj'], instance['set']
+            image, attr1, attr2, obj, settype = instance['image'], instance[
+                'attr1'], instance['attr2'], instance['obj'], instance['set']
 
-            if attr == 'NA' or (attr,
-                                obj) not in pairs or settype == 'NA':
+            if attr1 == 'NA' or attr2 == 'NA' or (attr1, attr2, obj) not in pairs or settype == 'NA':
                 # ignore instances with unlabeled attributes
                 # ignore instances that are not in current split
                 continue
 
-            data_i = [image, attr, obj]
+            data_i = [image, attr1, attr2, obj]
             if settype == 'train':
                 train_data.append(data_i)
             elif settype == 'val':
@@ -167,36 +168,37 @@ class CompositionDataset(Dataset):
                 # pairs = [t.split() if not '_' in t else t.split('_') for t in pairs]
                 pairs = [t.split() for t in pairs]
                 pairs = list(map(tuple, pairs))
-            attrs, objs = zip(*pairs)
-            return attrs, objs, pairs
+            attrs1, attrs2, objs = zip(*pairs)
+            return attrs1, attrs2, objs, pairs
 
-        tr_attrs, tr_objs, tr_pairs = parse_pairs(
+        tr_attrs1, tr_attrs2, tr_objs, tr_pairs = parse_pairs(
             '%s/%s/train_pairs.txt' % (self.root, self.split))
-        vl_attrs, vl_objs, vl_pairs = parse_pairs(
+        vl_attrs1, vl_attrs2, vl_objs, vl_pairs = parse_pairs(
             '%s/%s/val_pairs.txt' % (self.root, self.split))
-        ts_attrs, ts_objs, ts_pairs = parse_pairs(
+        ts_attrs1, ts_attrs2, ts_objs, ts_pairs = parse_pairs(
             '%s/%s/test_pairs.txt' % (self.root, self.split))
 
-        all_attrs, all_objs = sorted(
-            list(set(tr_attrs + vl_attrs + ts_attrs))), sorted(
-                list(set(tr_objs + vl_objs + ts_objs)))
+        all_attrs1, all_attrs2, all_objs = sorted(
+            list(set(tr_attrs1 + vl_attrs1 + ts_attrs1))), sorted(
+                list(set(tr_attrs2 + vl_attrs2 + ts_attrs2))), sorted(
+                    list(set(tr_objs + vl_objs + ts_objs)))
         all_pairs = sorted(list(set(tr_pairs + vl_pairs + ts_pairs)))
 
-        return all_attrs, all_objs, all_pairs, tr_pairs, vl_pairs, ts_pairs
+        return all_attrs1, all_attrs2, all_objs, all_pairs, tr_pairs, vl_pairs, ts_pairs
 
     def __getitem__(self, index):
-        image, attr, obj = self.data[index]
+        image, attr1, attr2, obj = self.data[index]
         img = self.loader(image)
         if self.transform is not None:
             img = self.transform(img)
 
         if self.phase == 'train':
             data = [
-                img, self.attr2idx[attr], self.obj2idx[obj], self.train_pair_to_idx[(attr, obj)]
+                img, self.attr2idx[attr1], self.attr2idx[attr2], self.obj2idx[obj], self.train_pair_to_idx[(attr1, attr2, obj)]
             ]
         else:
             data = [
-                img, self.attr2idx[attr], self.obj2idx[obj], self.pair2idx[(attr, obj)]
+                img, self.attr2idx[attr1], self.attr2idx[attr2], self.obj2idx[obj], self.pair2idx[(attr1, attr2, obj)]
             ]
 
         return data
@@ -211,13 +213,13 @@ class CompositionDataset(Dataset):
             len(self.train_pairs),
             len(self.val_pairs), n_seen_val,
             len(self.test_pairs), n_seen_test)
-        
-        _, attr_val, obj_val = zip(*self.val_data)
-        all_val_pairs = zip(attr_val, obj_val)
+
+        _, attr1_val, attr2_val, obj_val = zip(*self.val_data)
+        all_val_pairs = zip(attr1_val, attr2_val, obj_val)
         seen_pairs = set(self.train_pairs)
         n_seen_img_val = sum(p in seen_pairs for p in all_val_pairs)
-        _, attr_test, obj_test = zip(*self.test_data)
-        all_test_pairs = zip(attr_test, obj_test)
+        _, attr1_test, attr2_test, obj_test = zip(*self.test_data)
+        all_test_pairs = zip(attr1_test, attr2_test, obj_test)
         n_seen_img_test = sum(p in seen_pairs for p in all_test_pairs)
         descr_n_img = ' # train images: {:<7} | # val images: {:<7} ({:^5} seen) | # test images: {:<7} ({:^5} seen)'.format(
             len(self.train_data),
@@ -278,8 +280,8 @@ class CompositionDatasetEmbeddings(CompositionDataset):
         image_embs_data = torch.load(self.image_embs_path, weights_only=False)  # All image embeddings
         image_id2idx = {id: i for i, id in enumerate(image_embs_data['image_ids'])}
 
-        all_image_id, all_attrs, all_objs = zip(*self.data)
-        all_pairs = list(zip(all_attrs, all_objs))
+        all_image_id, all_attrs1, all_attrs2, all_objs = zip(*self.data)
+        all_pairs = list(zip(all_attrs1, all_attrs2, all_objs))
         indices = [image_id2idx[id] for id in all_image_id]
         image_embs = image_embs_data['embeddings'][indices]
 
