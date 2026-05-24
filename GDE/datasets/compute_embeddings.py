@@ -19,6 +19,8 @@ def chunks(l, n):
         yield l[i:i + n]
 
 
+
+#for debiasing, we do not need this
 def get_class_prompts_debiasing(dataset_name):
     # Prompts are the same used in https://arxiv.org/abs/2302.00070 (see https://github.com/chingyaoc/debias_vl/blob/main/discriminative/main.py)
     """
@@ -32,7 +34,7 @@ def get_class_prompts_debiasing(dataset_name):
         objs = ['blonde', 'dark']
     return class_prompt, objs
 
-
+# also this
 def get_pair_prompts_debiasing(dataset_name):
     # Prompts are the same used in https://arxiv.org/abs/2302.00070 (see https://github.com/chingyaoc/debias_vl/blob/main/discriminative/main.py)
     if dataset_name == 'waterbirds':
@@ -57,24 +59,29 @@ def get_pair_prompts_debiasing(dataset_name):
     return prompt, pair
 
 
-def get_text_prompts(dataset, dataset_name):
+
+
+def get_text_prompts(dataset, dataset_name):  #changed this from handling pairs to triplets 
     if dataset_name in {'waterbirds', 'celebA'}:
         class_prompt, objs = get_class_prompts_debiasing(dataset_name)
         pair_prompts, pair_pairs = get_pair_prompts_debiasing(dataset_name)
         prompts = class_prompt + pair_prompts
         pairs = [(None, o) for o in objs] + pair_pairs
         template = 'same used in https://arxiv.org/abs/2302.00070'
-    else:
-        def prompt_template(attr, obj):
-            attr = attr.replace(".", " ").lower()
-            obj = obj.replace(".", " ").lower()
-            return f"an image of a {attr} {obj}"
 
-        pairs = dataset.full_pairs
-        prompts = [prompt_template(a, o) for a, o in pairs]
-        template = prompt_template('ATTR', 'OBJ')
+    #what we need
+    else:
+        def prompt_template(attr1, attr2, obj):
+            attr1 = attr1.replace(".", " ").lower()
+            attr2 = attr2.replace(".", " ").lower()   #added this
+            obj = obj.replace(".", " ").lower()
+            return f"an image of a {attr1} {attr2} {obj} "   #extended this to handle attr2
+
+        triplets = dataset.full_triplets  #changed from pairs to triplets
+        prompts = [prompt_template(a1, a2, o) for a1,a2, o in triplets]  
+        template = prompt_template('ATTR1', 'ATTR2', 'OBJ')
     
-    return prompts, pairs, template
+    return prompts, triplets, template
 
 
 def compute_text_embeddings(dataset: CompositionDataset, dataset_name, model, tokenizer, device, output_file):
@@ -88,7 +95,7 @@ def compute_text_embeddings(dataset: CompositionDataset, dataset_name, model, to
         return
 
     # Define text prompts
-    prompts, pairs, template = get_text_prompts(dataset, dataset_name)
+    prompts, triplets, template = get_text_prompts(dataset, dataset_name)  #changed to handle triplets
 
     # Compute embeddings
     prompts_chunks = chunks(prompts, 128)
@@ -109,10 +116,10 @@ def compute_text_embeddings(dataset: CompositionDataset, dataset_name, model, to
     # Save embeddings on disk
     torch.save(
         {'embeddings': text_embeddings,
-         'pairs': pairs,
+         'triplets': triplets,  #changed to handle triplets
          'prompt template': template},
         output_path)
-    print(f"\nStored {len(pairs)} text embeddings in {output_path} .")
+    print(f"\nStored {len(triplets)} text embeddings in {output_path} .")  #changed
 
 
 def compute_image_embeddings(dataset: CompositionDataset, model, preprocess, device, output_file):
@@ -126,8 +133,8 @@ def compute_image_embeddings(dataset: CompositionDataset, model, preprocess, dev
 
     # Retrieve all images paths
     #img_paths = glob(os.path.join(dataset.root, 'images', '**', '*.jpg'), recursive=True)
-    all_images, all_attrs, all_objs = zip(*dataset.data)
-    all_pairs = zip(all_attrs, all_objs)
+    all_images, all_attrs1, all_attrs2,  all_objs = zip(*dataset.data)  #extended to handle second attribute
+    all_triplets = zip(all_attrs1, all_attrs2 , all_objs)  #extended to handle triplets
 
     image_embeddings = []
     with torch.no_grad():
@@ -142,7 +149,7 @@ def compute_image_embeddings(dataset: CompositionDataset, model, preprocess, dev
     image_embeddings = torch.cat(image_embeddings, 0)
     torch.save({'image_ids': all_images,
                 'embeddings': image_embeddings,
-                'pairs': all_pairs},
+                'triplets': all_triplets},  #here too
                 output_path)
 
     print(f"\nStored {len(all_images)} image embeddings in {output_path} .")   
