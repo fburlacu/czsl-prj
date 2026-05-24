@@ -83,8 +83,8 @@ class Evaluator:
         #     (dset.attr2idx[attr], dset.obj2idx[obj]) for attr, obj in dset.pairs
         # ])
 
-        self.triplets_idx2aoa_idx = torch.LongTensor([    
-            (dset.attr1_idx[attr1], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr1, obj, attr2 in dset.triplets        #new new
+        self.triplets_idx2a1a2o_idx = torch.LongTensor([    
+            (dset.attr1_idx[attr1], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr1, attr2 , obj in dset.triplets        #new new
         ])
 
 
@@ -99,9 +99,9 @@ class Evaluator:
 
     # i added this now for triplets :)
     def get_attr1_obj_attr2_from_triplets(self, triplets):
-        attrs1 =  self.triplets_idx2aoa_idx[triplets, 0]
-        objs   =  self.triplets_idx2aoa_idx[triplets, 1]
-        attrs2 =  self.triplets_idx2aoa_idx[triplets, 2]
+        attrs1 =  self.triplets_idx2a1a2o_idx[triplets, 0]
+        objs   =  self.triplets_idx2a1a2o_idx[triplets, 1]
+        attrs2 =  self.triplets_idx2a1a2o_idx[triplets, 2]
         return attrs1, objs , attrs2
     
 
