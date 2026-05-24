@@ -84,7 +84,7 @@ class Evaluator:
         # ])
 
         self.triplets_idx2aoa_idx = torch.LongTensor([    
-            (dset.attr1_idx[attr], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr, obj, attr2 in dset.triplets        #new new
+            (dset.attr1_idx[attr1], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr1, obj, attr2 in dset.triplets        #new new
         ])
 
 
@@ -264,7 +264,7 @@ class Evaluator:
                 "unbiased_triplets_acc": unbiased_triplets_acc,
                 "attr1_acc": attr1_acc,
                 "obj_acc"  : obj_acc,
-                "attr2_acc" : attr2_acc,  #attribute 2 accurcay on its own 
+                "attr2_acc" : attr2_acc,  #attribute 2 accuracy on its own 
                 "best_seen_acc": best_seen_acc,
                 "best_unseen_acc": best_unseen_acc,
                 "best_harmonic_mean": best_harmonic_mean,
@@ -498,7 +498,7 @@ def main(config: argparse.Namespace, verbose=False):
     dataset_path = DATASET_PATHS[config.dataset]
     model_info = {
         'model_architecture': config.model_architecture,
-        'model_pretraining': config.model_pretraining
+        'model_pretraining' : config.model_pretraining
     }
 
     test_dataset = CompositionDatasetEmbeddings(dataset_path,
