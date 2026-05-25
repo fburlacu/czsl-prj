@@ -96,14 +96,14 @@ class CompositionDataset(Dataset):
         self.loader = ImageLoader(self.root + '/images/')
 
 
-        #added attrs1 and attrs2 for hadling 2 attribute positions in the pair
-        self.attrs1, self.attrs2, self.objs, self.pairs, self.train_pairs, self.val_pairs, self.test_pairs = self.parse_split()
+        #added attrs1 and attrs2 for hadling 2 attribute positions in the triplet
+        self.attrs1, self.attrs2, self.objs, self.triplets, self.train_triplets, self.val_triplets, self.test_triplets = self.parse_split()
 
-        #product done with 3-positional pairs
-        self.full_pairs = list(product(self.attrs1, self.attrs2, self.objs))
+        #product done with 3-positional triplets
+        self.full_triplets = list(product(self.attrs1, self.attrs2, self.objs))
         if self.open_world:
-            self.pairs = self.full_pairs
-        
+            self.triplets = self.full_triplets
+
         # phase-specific attributes
         self.train_data, self.val_data, self.test_data = self.get_split_info()
         if self.phase == 'train':
@@ -115,38 +115,38 @@ class CompositionDataset(Dataset):
         else: # get all data
             self.data = self.train_data + self.val_data + self.test_data
         _, self.all_attrs1, self.all_attrs2, self.all_objs = zip(*self.data)
-        self.all_pairs = list(zip(self.all_attrs1, self.all_attrs2, self.all_objs))
+        self.all_triplets = list(zip(self.all_attrs1, self.all_attrs2, self.all_objs))
 
         self.obj2idx = {obj: idx for idx, obj in enumerate(self.objs)}
-        self.attr1idx = {attr: idx for idx, attr in enumerate(self.attrs1)} #new
-        self.attr2idx = {attr: idx for idx, attr in enumerate(self.attrs2)} #new
-        self.pair2idx = {pair: idx for idx, pair in enumerate(self.pairs)}
+        self.attr1_idx = {attr1: idx for idx, attr1 in enumerate(self.attrs1)} #new
+        self.attr2_idx = {attr2: idx for idx, attr2 in enumerate(self.attrs2)} #new
+        self.triplet2idx = {triplet: idx for idx, triplet in enumerate(self.triplets)}
 
-        self.train_pair_to_idx = dict(
-            [(pair, idx) for idx, pair in enumerate(self.train_pairs)]
+        self.train_triplet_to_idx = dict(
+            [(triplet, idx) for idx, triplet in enumerate(self.train_triplets)]
         )
 
-        # Some potentially usefull info 
-        seen_pairs = set(self.train_pairs)
+        # Some potentially usefull info
+        seen_triplets = set(self.train_triplets)
         self.seen_mask = torch.BoolTensor(
-            [pair in seen_pairs for pair in self.pairs]
-            )
+            [triplet in seen_triplets for triplet in self.triplets]
+        )
 
-        self.objs_by_attr= {(a1, a2): [] for (a1, a2, o) in self.pairs} 
+        self.objs_by_attr= {(a1, a2): [] for (a1, a2, o) in self.triplets}
         self.attrs_by_obj = {k: [] for k in self.objs}
-        for (a1, a2, o) in self.all_pairs:
+        for (a1, a2, o) in self.all_triplets:
             self.objs_by_attr[(a1, a2)].append(o)
             self.attrs_by_obj[o].append((a1, a2))
 
     def get_split_info(self):
         data = torch.load(self.root + '/metadata_{}.t7'.format(self.split), weights_only=False)
         train_data, val_data, test_data = [], [], []
-        pairs = set(self.pairs)
+        triplets = set(self.triplets)
         for instance in data:
             image, attr1, attr2, obj, settype = instance['image'], instance[
                 'attr1'], instance['attr2'], instance['obj'], instance['set']
 
-            if attr1 == 'NA' or attr2 == 'NA' or (attr1, attr2, obj) not in pairs or settype == 'NA':
+            if attr1 == 'NA' or attr2 == 'NA' or (attr1, attr2, obj) not in triplets or settype == 'NA':
                 # ignore instances with unlabeled attributes
                 # ignore instances that are not in current split
                 continue
@@ -162,29 +162,29 @@ class CompositionDataset(Dataset):
         return train_data, val_data, test_data
 
     def parse_split(self):
-        def parse_pairs(pair_list):
-            with open(pair_list, 'r') as f:
-                pairs = f.read().strip().split('\n')
-                # pairs = [t.split() if not '_' in t else t.split('_') for t in pairs]
-                pairs = [t.split() for t in pairs]
-                pairs = list(map(tuple, pairs))
-            attrs1, attrs2, objs = zip(*pairs)
-            return attrs1, attrs2, objs, pairs
+        def parse_triplets(triplet_list):
+            with open(triplet_list, 'r') as f:
+                triplets = f.read().strip().split('\n')
+                # triplets = [t.split() if not '_' in t else t.split('_') for t in triplets]
+                triplets = [t.split() for t in triplets]
+                triplets = list(map(tuple, triplets))
+            attrs1, attrs2, objs = zip(*triplets)
+            return attrs1, attrs2, objs, triplets
 
-        tr_attrs1, tr_attrs2, tr_objs, tr_pairs = parse_pairs(
-            '%s/%s/train_pairs.txt' % (self.root, self.split))
-        vl_attrs1, vl_attrs2, vl_objs, vl_pairs = parse_pairs(
-            '%s/%s/val_pairs.txt' % (self.root, self.split))
-        ts_attrs1, ts_attrs2, ts_objs, ts_pairs = parse_pairs(
-            '%s/%s/test_pairs.txt' % (self.root, self.split))
+        tr_attrs1, tr_attrs2, tr_objs, tr_triplets = parse_triplets(
+            '%s/%s/train_triplets.txt' % (self.root, self.split))
+        vl_attrs1, vl_attrs2, vl_objs, vl_triplets = parse_triplets(
+            '%s/%s/val_triplets.txt' % (self.root, self.split))
+        ts_attrs1, ts_attrs2, ts_objs, ts_triplets = parse_triplets(
+            '%s/%s/test_triplets.txt' % (self.root, self.split))
 
         all_attrs1, all_attrs2, all_objs = sorted(
             list(set(tr_attrs1 + vl_attrs1 + ts_attrs1))), sorted(
                 list(set(tr_attrs2 + vl_attrs2 + ts_attrs2))), sorted(
                     list(set(tr_objs + vl_objs + ts_objs)))
-        all_pairs = sorted(list(set(tr_pairs + vl_pairs + ts_pairs)))
+        all_triplets = sorted(list(set(tr_triplets + vl_triplets + ts_triplets)))
 
-        return all_attrs1, all_attrs2, all_objs, all_pairs, tr_pairs, vl_pairs, ts_pairs
+        return all_attrs1, all_attrs2, all_objs, all_triplets, tr_triplets, vl_triplets, ts_triplets
 
     def __getitem__(self, index):
         image, attr1, attr2, obj = self.data[index]
@@ -194,11 +194,11 @@ class CompositionDataset(Dataset):
 
         if self.phase == 'train':
             data = [
-                img, self.attr2idx[attr1], self.attr2idx[attr2], self.obj2idx[obj], self.train_pair_to_idx[(attr1, attr2, obj)]
+                img, self.attr1_idx[attr1], self.attr2_idx[attr2], self.obj2idx[obj], self.train_triplet_to_idx[(attr1, attr2, obj)]
             ]
         else:
             data = [
-                img, self.attr2idx[attr1], self.attr2idx[attr2], self.obj2idx[obj], self.pair2idx[(attr1, attr2, obj)]
+                img, self.attr1_idx[attr1], self.attr2_idx[attr2], self.obj2idx[obj], self.triplet2idx[(attr1, attr2, obj)]
             ]
 
         return data
@@ -207,27 +207,27 @@ class CompositionDataset(Dataset):
         return len(self.data)
     
     def __str__(self) -> str:
-        n_seen_val = len(set(self.train_pairs) & set(self.val_pairs))
-        n_seen_test = len(set(self.train_pairs) & set(self.test_pairs))
-        descr_pairs = ' # train pairs : {:<7} | # val pairs : {:<7} ({:^5} seen) | # test pairs : {:<7} ({:^5} seen)'.format(
-            len(self.train_pairs),
-            len(self.val_pairs), n_seen_val,
-            len(self.test_pairs), n_seen_test)
+        n_seen_val = len(set(self.train_triplets) & set(self.val_triplets))
+        n_seen_test = len(set(self.train_triplets) & set(self.test_triplets))
+        descr_triplets = ' # train triplets : {:<7} | # val triplets : {:<7} ({:^5} seen) | # test triplets : {:<7} ({:^5} seen)'.format(
+            len(self.train_triplets),
+            len(self.val_triplets), n_seen_val,
+            len(self.test_triplets), n_seen_test)
 
         _, attr1_val, attr2_val, obj_val = zip(*self.val_data)
-        all_val_pairs = zip(attr1_val, attr2_val, obj_val)
-        seen_pairs = set(self.train_pairs)
-        n_seen_img_val = sum(p in seen_pairs for p in all_val_pairs)
+        all_val_triplets = zip(attr1_val, attr2_val, obj_val)
+        seen_triplets = set(self.train_triplets)
+        n_seen_img_val = sum(p in seen_triplets for p in all_val_triplets)
         _, attr1_test, attr2_test, obj_test = zip(*self.test_data)
-        all_test_pairs = zip(attr1_test, attr2_test, obj_test)
-        n_seen_img_test = sum(p in seen_pairs for p in all_test_pairs)
+        all_test_triplets = zip(attr1_test, attr2_test, obj_test)
+        n_seen_img_test = sum(p in seen_triplets for p in all_test_triplets)
         descr_n_img = ' # train images: {:<7} | # val images: {:<7} ({:^5} seen) | # test images: {:<7} ({:^5} seen)'.format(
             len(self.train_data),
             len(self.val_data), n_seen_img_val,
             len(self.test_data), n_seen_img_test)
-        descr_ao = ' # attrs : {:<10} # objs : {:<10} # full pairs {:<10}'.format(
-            len(self.attrs), len(self.objs), len(self.full_pairs))
-        return descr_pairs + '\n' + descr_n_img + '\n' + descr_ao
+        descr_ao = ' # attrs1 : {:<10} # attrs2 : {:<10} # objs : {:<10} # full triplets {:<10}'.format(
+            len(self.attrs1), len(self.attrs2), len(self.objs), len(self.full_triplets))
+        return descr_triplets + '\n' + descr_n_img + '\n' + descr_ao
 
 
 
@@ -250,28 +250,28 @@ class CompositionDatasetEmbeddings(CompositionDataset):
         self.text_embs_path = os.path.join(root, 'TEXT' + loadfile_id)
         self.image_embs_path = os.path.join(root, 'IMG' + loadfile_id)
         self.normalize = normalize
-    
-    def load_text_embs(self, pairs):
+
+    def load_text_embs(self, triplets):
         '''
-        Loads text embeddings for given pairs.
+        Loads text embeddings for given triplets.
         '''
         text_embs_data = torch.load(self.text_embs_path, weights_only=False)  # All text embeddings
-        pair2idx = defaultdict(list)
-        for i, pair in enumerate(text_embs_data['pairs']):
-            pair2idx[pair].append(i)
+        triplet2idx = defaultdict(list)
+        for i, triplet in enumerate(text_embs_data['triplets']):
+            triplet2idx[triplet].append(i)
 
-        indices = [i for pair in pairs
-                     for i in pair2idx[pair]]
+        indices = [i for triplet in triplets
+                     for i in triplet2idx[triplet]]
         text_embs = text_embs_data['embeddings'][indices]
 
         if self.normalize:
             text_embs = F.normalize(text_embs, p=2, dim=-1)
         
-        if len(pairs)==len(text_embs):
+        if len(triplets)==len(text_embs):
             return text_embs
         else:
-            all_pairs = [text_embs_data['pairs'][i] for i in indices]
-            return text_embs, all_pairs
+            all_triplets = [text_embs_data['triplets'][i] for i in indices]
+            return text_embs, all_triplets
 
     def load_all_image_embs(self):
         '''
@@ -281,11 +281,11 @@ class CompositionDatasetEmbeddings(CompositionDataset):
         image_id2idx = {id: i for i, id in enumerate(image_embs_data['image_ids'])}
 
         all_image_id, all_attrs1, all_attrs2, all_objs = zip(*self.data)
-        all_pairs = list(zip(all_attrs1, all_attrs2, all_objs))
+        all_triplets = list(zip(all_attrs1, all_attrs2, all_objs))
         indices = [image_id2idx[id] for id in all_image_id]
         image_embs = image_embs_data['embeddings'][indices]
 
         if self.normalize:
             image_embs = F.normalize(image_embs, p=2, dim=-1)
 
-        return image_embs, all_pairs
+        return image_embs, all_triplets
