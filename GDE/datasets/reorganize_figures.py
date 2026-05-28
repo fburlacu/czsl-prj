@@ -55,23 +55,27 @@ random.seed(SEED)
 set_assignment = {}   # filename -> 'train' | 'val' | 'test'
  
 from collections import defaultdict
-groups = defaultdict(list)
-for d in data:
-    groups[(d['attr1'], d['attr2'], d['obj'])].append(d['filename'])
+shuffled_triplets = list(triplets)
+random.shuffle(shuffled_triplets)
  
-for triplet, filenames in groups.items():
-    random.shuffle(filenames)
-    n       = len(filenames)
-    n_train = max(1, round(n * TRAIN_RATIO))
-    n_val   = max(1, round(n * VAL_RATIO))
-    # test gets the remainder (respects TEST_RATIO implicitly)
-    for i, fname in enumerate(filenames):
-        if   i < n_train:
-            set_assignment[fname] = 'train'
-        elif i < n_train + n_val:
-            set_assignment[fname] = 'val'
-        else:
-            set_assignment[fname] = 'test'
+n_total = len(shuffled_triplets)
+n_train = max(1, round(n_total * TRAIN_RATIO))
+n_val   = max(1, round(n_total * VAL_RATIO))
+# test gets the remainder
+ 
+triplet_split = {}   # (attr1, attr2, obj) -> 'train' | 'val' | 'test'
+for i, triplet in enumerate(shuffled_triplets):
+    if   i < n_train:
+        triplet_split[triplet] = 'train'
+    elif i < n_train + n_val:
+        triplet_split[triplet] = 'val'
+    else:
+        triplet_split[triplet] = 'test'
+ 
+# Every image in a triplet inherits the triplet's split assignment
+set_assignment = {}   # filename -> 'train' | 'val' | 'test'
+for d in data:
+    set_assignment[d['filename']] = triplet_split[(d['attr1'], d['attr2'], d['obj'])]
  
 #  Create directory structure 
  
@@ -105,10 +109,15 @@ split_name = 'compositional-split-natural'
 torch.save(new_data, os.path.join(new_root, f'metadata_{split_name}.t7'))
  
 # ── Write split pair files ───────────────────────────────────────────────────────
-# All triplets appear in every split file (closed-world).
+# Each file lists only the triplets exclusively assigned to that split.
+ 
+split_triplets = defaultdict(list)
+for triplet, s in triplet_split.items():
+    split_triplets[s].append(triplet)
  
 os.makedirs(os.path.join(new_root, split_name), exist_ok=True)
 for s in sets:
+    pairs = sorted(split_triplets[s])
     with open(os.path.join(new_root, split_name, f'{s}_pairs.txt'), 'w+') as file:
-        file.writelines([f"{a1} {a2} {o}\n" for a1, a2, o in triplets])
+        file.writelines([f"{a1} {a2} {o}\n" for a1, a2, o in pairs])
  
