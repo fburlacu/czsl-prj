@@ -84,7 +84,7 @@ class Evaluator:
         # ])
 
         self.triplets_idx2a1a2o_idx = torch.LongTensor([    
-            (dset.attr1_idx[attr1], dset.obj2idx[obj], dset.attr2_idx[attr2]) for attr1, attr2 , obj in dset.triplets        #new new
+            (dset.attr1_idx[attr1], dset.attr2_idx[attr2] , dset.obj2idx[obj]) for attr1, attr2 , obj in dset.triplets        #changed order
         ])
 
 
@@ -98,11 +98,11 @@ class Evaluator:
     
 
     # i added this now for triplets :)
-    def get_attr1_obj_attr2_from_triplets(self, triplets):
+    def get_attr1_attr2_obj_from_triplets(self, triplets):
         attrs1 =  self.triplets_idx2a1a2o_idx[triplets, 0]
-        objs   =  self.triplets_idx2a1a2o_idx[triplets, 1]
-        attrs2 =  self.triplets_idx2a1a2o_idx[triplets, 2]
-        return attrs1, objs , attrs2
+        attrs2 =  self.triplets_idx2a1a2o_idx[triplets, 1]
+        objs   =  self.triplets_idx2a1a2o_idx[triplets, 2]
+        return attrs1, attrs2 , objs
     
 
 
@@ -135,9 +135,9 @@ class Evaluator:
         # _, pair_preds = scores.topk(topk, dim=1)
         _, triplets_preds =  scores.topk(topk, dim=1)
         # attr_preds, obj_preds = self.get_attr_obj_from_pairs(pair_preds)
-        attr1_preds, obj_preds, attr2_preds = self.get_attr1_obj_attr2_from_triplets(triplets_preds)  # i added this so we can use ent_preds and send it to get each one seperately
+        attr1_preds, attr2_preds, obj_preds = self.get_attr1_attr2_obj_from_triplets(triplets_preds)  # i added this so we can use ent_preds and send it to get each one seperately
 
-        return triplets_preds, attr1_preds, obj_preds, attr2_preds
+        return triplets_preds, attr1_preds, attr2_preds,  obj_preds
     
     def get_overall_metrics(self, features, all_triplets_true, topk_list=[1], progress_bar=True):  #completely changed this
 
@@ -180,13 +180,13 @@ class Evaluator:
 
 
             #replaced with this
-            triplets_preds, attr1_preds, obj_preds, attr2_preds = self.predict(features, topk=topk, bias=0.)
+            triplets_preds, attr1_preds, attr2_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
 
 
 
             # attr_true, obj_true, = self.get_attr_obj_from_pairs(labels)
 
-            attr1_true, obj_true, attr2_true = self.get_attr1_obj_attr2_from_triplets(labels)
+            attr1_true, attr2_true, obj_true = self.get_attr1_attr2_obj_from_triplets(labels)
             
             # unbiased_pair_acc = self.evaluate(
             #     pair_preds, labels, seen_ids, unseen_ids)['all_acc']
@@ -296,7 +296,7 @@ class Evaluator:
         labels = torch.LongTensor(
             [self.dset.triplets2idx[triplets] for triplets in all_triplets_true]
         )
-        attr1_true, obj_true, attr2_true = self.get_attr1_obj_attr2_from_triplets(labels)
+        attr1_true, attr2_true, obj_true,  = self.get_attr1_attr2_obj_from_triplets(labels)
 
         # seen/unseen samples
         seen_ids = [
@@ -315,7 +315,7 @@ class Evaluator:
 
             # pair_preds, attr_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
 
-            triplets_preds, attr1_preds, obj_preds, attr2_preds = self.predict(features, topk=topk, bias=0.)
+            triplets_preds, attr1_preds, attr2_preds, obj_preds = self.predict(features, topk=topk, bias=0.)
             
             # unbiased_pair_acc = self.evaluate(
             #     pair_preds, labels, seen_ids, unseen_ids)['all_acc']
@@ -531,20 +531,20 @@ def main(config: argparse.Namespace, verbose=False):
             
             # 1) Prepare the embeddings that will be used to compute the ideal words (primitive directions in the optimal decomposition)
             if config.modality_IW == 'text':
-                all_pairs_IW = train_dataset.full_pairs
-                embs_for_IW = train_dataset.load_text_embs(all_pairs_IW)
+                all_triplets_IW = train_dataset.full_triplets #changed this
+                embs_for_IW = train_dataset.load_text_embs(all_triplets_IW)
             elif config.modality_IW == 'valid text':
-                all_pairs_IW = train_dataset.train_pairs
-                embs_for_IW = train_dataset.load_text_embs(all_pairs_IW)
+                all_triplets_IW = train_dataset.train_triplets
+                embs_for_IW = train_dataset.load_text_embs(all_triplets_IW)
             elif config.modality_IW == 'image':
-                embs_for_IW, all_pairs_IW = train_dataset.load_all_image_embs()
+                embs_for_IW, all_triplets_IW = train_dataset.load_all_image_embs()
                 # if config.n_images is not None:
                 #     embs_for_IW, all_pairs_IW = select_n_embs_per_pair(
                 #         embs_for_IW, all_pairs_IW, n=config.n_images
                 #     )
                 if config.n_images is not None:
-                    embs_for_IW, all_pairs_IW = select_n_embs_per_triplets(   #added this
-                        embs_for_IW, all_pairs_IW, n=config.n_images
+                    embs_for_IW, all_triplets_IW = select_n_embs_per_triplets(   #added this
+                        embs_for_IW, all_triplets_IW, n=config.n_images
                     )
 
 
@@ -552,16 +552,16 @@ def main(config: argparse.Namespace, verbose=False):
             if 'CW' in config.experiment_name:  # Use CLIP Weights (only in image modality)
                 name, _, T = config.experiment_name.split('_') # Expect name_CW_T
                 probs_type = 'SigLIP' if 'SigLIP' in config.model_architecture else 'clip'
-                weights = compute_weights(embs_for_IW, all_pairs_IW, train_dataset,
+                weights = compute_weights(embs_for_IW, all_triplets_IW, train_dataset,
                                           use_clip_score=True, temperature=T, probs_type=probs_type)
             else:
                 name = config.experiment_name
-                weights = compute_weights(embs_for_IW, all_pairs_IW, train_dataset,
+                weights = compute_weights(embs_for_IW, all_triplets_IW, train_dataset,
                                           use_clip_score=False)
 
             # 3) Select the factorizer used to compute/combine ideal words
             Factorizer = FACTORIZERS[name]
-            factorizer = Factorizer(embs_for_IW, all_pairs_IW, weights)
+            factorizer = Factorizer(embs_for_IW, all_triplets_IW, weights)
             
             # 4) Compute pair representations combining ideal words
             # test_pair_embs = factorizer.compute_ideal_words_approximation(
