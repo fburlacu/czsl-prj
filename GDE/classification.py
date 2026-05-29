@@ -139,10 +139,10 @@ class Evaluator:
 
         return triplets_preds, attr1_preds, attr2_preds,  obj_preds
 
-    def predict_sequential(self, scores_attr1, scores_attr2, scores_obj):
-        attr1_preds = scores_attr1.argmax(dim=1, keepdim=True)  # [N x 1]
-        attr2_preds = scores_attr2.argmax(dim=1, keepdim=True)  # [N x 1]
-        obj_preds   = scores_obj.argmax(dim=1, keepdim=True)    # [N x 1]
+    def predict_sequential(self, scores_attr1, scores_attr2, scores_obj, attr1_f2d, attr2_f2d, obj_f2d):
+        attr1_preds = attr1_f2d[scores_attr1.argmax(dim=1)]  # [N]
+        attr2_preds = attr2_f2d[scores_attr2.argmax(dim=1)]  # [N]
+        obj_preds   = obj_f2d[scores_obj.argmax(dim=1)]      # [N]
         return attr1_preds, attr2_preds, obj_preds
 
     def get_overall_metrics(self, features, all_triplets_true, topk_list=[1], progress_bar=True):  #completely changed this
@@ -392,7 +392,7 @@ class Evaluator:
             }
         return fast_metrics
 
-    def get_sequential_metrics(self, scores_attr1, scores_attr2, scores_obj, all_triplets_true):
+    def get_sequential_metrics(self, scores_attr1, scores_attr2, scores_obj, all_triplets_true, attr1_f2d, attr2_f2d, obj_f2d):
         labels = torch.LongTensor(
             [self.dset.triplets2idx[triplet] for triplet in all_triplets_true]
         )
@@ -408,7 +408,7 @@ class Evaluator:
         ]
  
         attr1_preds, attr2_preds, obj_preds = self.predict_sequential(
-            scores_attr1, scores_attr2, scores_obj
+            scores_attr1, scores_attr2, scores_obj, attr1_f2d=attr1_f2d, attr2_f2d=attr2_f2d, obj_f2d=obj_f2d
         )
  
         attr1_acc = self.evaluate(attr1_preds, attr1_true, seen_ids, unseen_ids)['all_acc']
@@ -629,8 +629,14 @@ def main(config: argparse.Namespace, verbose=False):
             scores_attr1 = compute_logits(image_embs, attr1_emb.to(device))  # [N x |attr1|]
             scores_attr2 = compute_logits(image_embs, attr2_emb.to(device))  # [N x |attr2|]
             scores_obj   = compute_logits(image_embs, obj_emb.to(device))    # [N x |obj|]
+
+            #maps for keeping indexes in factorizer and in dataset the same (crutial for computing accuracy)
+            attr1_f2d = torch.LongTensor([test_dataset.attr1_idx[attr1] for attr1 in factorizer.attrs1]).to(device)
+            attr2_f2d = torch.LongTensor([test_dataset.attr2_idx[attr2] for attr2 in factorizer.attrs2]).to(device)
+            obj_f2d   = torch.LongTensor([test_dataset.obj2idx[obj] for obj in factorizer.objs]).to(device)
+
             result = evaluator.get_sequential_metrics(
-                scores_attr1, scores_attr2, scores_obj, all_triplets_true
+                scores_attr1, scores_attr2, scores_obj, all_triplets_true, attr1_f2d=attr1_f2d, attr2_f2d=attr2_f2d, obj_f2d=obj_f2d
             )
         else:
             test_triplets_embs = test_triplets_embs.to(device)
