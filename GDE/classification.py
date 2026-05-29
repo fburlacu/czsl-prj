@@ -138,7 +138,13 @@ class Evaluator:
         attr1_preds, attr2_preds, obj_preds = self.get_attr1_attr2_obj_from_triplets(triplets_preds)  # i added this so we can use ent_preds and send it to get each one seperately
 
         return triplets_preds, attr1_preds, attr2_preds,  obj_preds
-    
+
+    def predict_sequential(self, scores_attr1, scores_attr2, scores_obj):
+        attr1_preds = scores_attr1.argmax(dim=1, keepdim=True)  # [N x 1]
+        attr2_preds = scores_attr2.argmax(dim=1, keepdim=True)  # [N x 1]
+        obj_preds   = scores_obj.argmax(dim=1, keepdim=True)    # [N x 1]
+        return attr1_preds, attr2_preds, obj_preds
+
     def get_overall_metrics(self, features, all_triplets_true, topk_list=[1], progress_bar=True):  #completely changed this
 
         # labels = torch.LongTensor(
@@ -386,6 +392,48 @@ class Evaluator:
             }
         return fast_metrics
 
+    def get_sequential_metrics(self, scores_attr1, scores_attr2, scores_obj, all_triplets_true):
+        labels = torch.LongTensor(
+            [self.dset.triplets2idx[triplet] for triplet in all_triplets_true]
+        )
+        attr1_true, attr2_true, obj_true = self.get_attr1_attr2_obj_from_triplets(labels)
+ 
+        seen_ids = [
+            i for i in range(len(all_triplets_true))
+            if all_triplets_true[i] in self.seen_triplets_set
+        ]
+        unseen_ids = [
+            i for i in range(len(all_triplets_true))
+            if all_triplets_true[i] not in self.seen_triplets_set
+        ]
+ 
+        attr1_preds, attr2_preds, obj_preds = self.predict_sequential(
+            scores_attr1, scores_attr2, scores_obj
+        )
+ 
+        attr1_acc = self.evaluate(attr1_preds, attr1_true, seen_ids, unseen_ids)['all_acc']
+        attr2_acc = self.evaluate(attr2_preds, attr2_true, seen_ids, unseen_ids)['all_acc']
+        obj_acc   = self.evaluate(obj_preds,   obj_true,   seen_ids, unseen_ids)['all_acc']
+ 
+        # Triplet accuracy: all three primitives simultaneously correct
+        attr1_correct = torch.eq(attr1_preds.squeeze(1), attr1_true)  # [N]
+        attr2_correct = torch.eq(attr2_preds.squeeze(1), attr2_true)
+        obj_correct   = torch.eq(obj_preds.squeeze(1),   obj_true)
+        triplet_correct = (attr1_correct & attr2_correct & obj_correct).numpy()
+ 
+        triplet_acc        = np.mean(triplet_correct)
+        seen_triplet_acc   = np.mean(triplet_correct[seen_ids])   if seen_ids   else 0.0
+        unseen_triplet_acc = np.mean(triplet_correct[unseen_ids]) if unseen_ids else 0.0
+ 
+        return {
+            "attr1_acc":          attr1_acc,
+            "attr2_acc":          attr2_acc,
+            "obj_acc":            obj_acc,
+            "triplet_acc":        triplet_acc,
+            "seen_triplet_acc":   seen_triplet_acc,
+            "unseen_triplet_acc": unseen_triplet_acc,
+        }
+
 
 # def select_n_embs_per_pair(embeddings, all_pairs, n: int):
 #     '''Randomly selects up to n embeddings for each pair.'''
@@ -563,32 +611,34 @@ def main(config: argparse.Namespace, verbose=False):
             Factorizer = FACTORIZERS[name]
             factorizer = Factorizer(embs_for_IW, all_triplets_IW, weights)
             
-            # 4) Compute pair representations combining ideal words
-            # test_pair_embs = factorizer.compute_ideal_words_approximation(
-            #     target_pairs=test_dataset.pairs
-            #     )
-
-            test_triplets_embs = factorizer.compute_ideal_words_approximation(   #added this 
-                target_triplets=test_dataset.triplets
+            # 4) Compute triplet/individual representations combining ideal words
+            
+            if config.sequential:
+                attr1_emb, attr2_emb, obj_emb = factorizer.compute_ideal_words_approximation_sequential(
+                    target_triplets=test_dataset.triplets
+                )
+            else:
+                test_triplets_embs = factorizer.compute_ideal_words_approximation(
+                    target_triplets=test_dataset.triplets
                 )
         
         # Compute predictions
-        # image_embs, all_pairs_true  = test_dataset.load_all_image_embs()
-
-
         image_embs, all_triplets_true = test_dataset.load_all_image_embs()
         image_embs = image_embs.to(device)
 
+        if config.sequential: 
+            scores_attr1 = compute_logits(image_embs, attr1_emb.to(device))  # [N x |attr1|]
+            scores_attr2 = compute_logits(image_embs, attr2_emb.to(device))  # [N x |attr2|]
+            scores_obj   = compute_logits(image_embs, obj_emb.to(device))    # [N x |obj|]
+            result = evaluator.get_sequential_metrics(
+                scores_attr1, scores_attr2, scores_obj, all_triplets_true
+            )
+        else:
+            test_triplets_embs = test_triplets_embs.to(device)
+            logits = compute_logits(image_embs, test_triplets_embs)
 
-        # test_pair_embs = test_pair_embs.to(device)
 
 
-        test_triplets_embs = test_triplets_embs.to(device)
-        logits = compute_logits(image_embs, test_triplets_embs)
-
-
-
-        # logits = compute_logits(image_embs, test_pair_embs)
 
         # Evaluate predictions
         evaluator = Evaluator(test_dataset)
@@ -666,6 +716,7 @@ if __name__ == '__main__':
         "--result_path",
         help="path to json file. Result is saved here.",
         type=str, default=None)
-    
-    config = parser.parse_args()
-    main(config, verbose=True)
+    parser.add_argument( #new
+        "--sequential",
+        help="use sequential primitive scoring instead of exhaustive triplet scoring",
+        action="store_true")
