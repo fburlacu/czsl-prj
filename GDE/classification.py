@@ -615,7 +615,6 @@ def main(config: argparse.Namespace, verbose=False):
             
             if config.sequential:
                 attr1_emb, attr2_emb, obj_emb = factorizer.compute_ideal_words_approximation_sequential(
-                    target_triplets=test_dataset.triplets
                 )
             else:
                 test_triplets_embs = factorizer.compute_ideal_words_approximation(
