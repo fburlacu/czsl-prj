@@ -104,7 +104,7 @@ class CompositionalFactorizer:
         self.obj2idx   = {obj: idx for idx, obj in enumerate(self.objs)}
 
         # Compute IW for attrs and objs in dataset
-        self.context, self.attr_IW, self.obj_IW = self.compute_ideal_words(
+        self.context, self.attr1_IW, self.attr2_IW, self.obj_IW = self.compute_ideal_words(
             embeddings=embs_for_IW,
             all_triplets_gt=all_triplets_gt,
             weights=weights
@@ -154,15 +154,15 @@ class CompositionalFactorizer:
 
     def compute_ideal_words_approximation(self, target_triplet):  #handles triplets
         target_attr1_idx = torch.tensor(
-            [self.attr1_idx[attr1] for attr1, _ in target_triplet],
+            [self.attr1_idx[attr1] for attr1, _, _ in target_triplet],
             device=self.device)
         
         target_attr2_idx = torch.tensor(
-            [self.attr2_idx[attr2] for attr2, _ in target_triplet],
+            [self.attr2_idx[attr2] for _, attr2, _ in target_triplet],
             device=self.device)
         
         target_obj_idx = torch.tensor(
-            [self.obj2idx[obj] for _, obj in target_triplet],
+            [self.obj2idx[obj] for _, _, obj in target_triplet],
             device=self.device)
         
         # Select attr_IW and obj_IW for target pairs
