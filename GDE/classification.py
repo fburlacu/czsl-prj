@@ -15,6 +15,10 @@ from datasets.composition_dataset import CompositionDatasetEmbeddings
 from utils.utils import set_seed
 from factorizers import FACTORIZERS
 
+
+
+
+
 def accuracy(y_pred, y_true):
     n_correct = torch.eq(y_pred, y_true).sum().item()
     n_tot = y_true.size(0)
@@ -140,10 +144,57 @@ class Evaluator:
         return triplets_preds, attr1_preds, attr2_preds,  obj_preds
 
     def predict_sequential(self, scores_attr1, scores_attr2, scores_obj, attr1_f2d, attr2_f2d, obj_f2d):
-        attr1_preds = attr1_f2d[scores_attr1.argmax(dim=1)]  # [N]
-        attr2_preds = attr2_f2d[scores_attr2.argmax(dim=1)]  # [N]
-        obj_preds   = obj_f2d[scores_obj.argmax(dim=1)]      # [N]
+            attr1_preds = attr1_f2d[scores_attr1.argmax(dim=1)]  # [N]
+            attr2_preds = attr2_f2d[scores_attr2.argmax(dim=1)]  # [N]
+            obj_preds   = obj_f2d[scores_obj.argmax(dim=1)]      # [N]
+            return attr1_preds, attr2_preds, obj_preds
+        
+    def predict_top_k(self, img_embs, scores_attr1, scores_attr2, scores_obj, attr1_f2d, attr2_f2d, obj_f2d, factorizer, pick_top_k):
+        logit_scale = exp(0.07)
+        logit_scale = min(logit_scale, 100.0) 
+        N    = scores_attr1.shape[0]
+        s_a1 = scores_attr1.shape[1]
+        s_a2 = scores_attr2.shape[1]
+        s_o  = scores_obj.shape[1]
+        device = img_embs.device
+
+        full_scores = (
+            scores_attr1[:, :,    None, None]
+            + scores_attr2[:, None, :,  None]
+            + scores_obj[:,   None, None, :]
+        ).view(N, -1)   
+
+        _, topk_ = full_scores.topk(pick_top_k, dim = 1)
+
+        new_a1 = topk_ // (s_a2 * s_o)
+        new_a2 = topk_ % (s_a2 * s_o) // s_o
+        new_o =  topk_ % s_o
+
+        new_attr1_IW = factorizer.attr1_IW.to(device)[new_a1]
+        new_attr2_IW = factorizer.attr2_IW.to(device)[new_a2]
+        new_obj_IW   = factorizer.obj_IW.to(device)[new_o]
+
+        NK = N * pick_top_k
+
+        cand_embs = factorizer.combine_ideal_words(new_attr1_IW.view(NK, -1),  new_attr2_IW.view(NK, -1),  new_obj_IW.view(NK,-1))
+        img_expanded = img_embs.unsqueeze(1).expand(N, pick_top_k, -1).reshape(NK, -1)
+        exact_scores = (logit_scale * (img_expanded * cand_embs).sum(dim=1)).view(N, pick_top_k)
+        best_k = exact_scores.argmax(dim=1)  
+
+        picked_a1 =  new_a1[torch.arange(N), best_k]
+        picked_a2 =  new_a2[torch.arange(N), best_k]
+        picked_o   =  new_o[torch.arange(N), best_k]
+
+        attr1_preds = attr1_f2d[picked_a1]  # (N,)
+        attr2_preds = attr2_f2d[picked_a2]
+        obj_preds   = obj_f2d[picked_o]
+
+
         return attr1_preds, attr2_preds, obj_preds
+
+
+
+        
 
     def get_overall_metrics(self, features, all_triplets_true, topk_list=[1], progress_bar=True):  #completely changed this
 
@@ -433,6 +484,52 @@ class Evaluator:
             "seen_triplet_acc":   seen_triplet_acc,
             "unseen_triplet_acc": unseen_triplet_acc,
         }
+    
+
+
+    def get_top_k_metrics(self, img_embs, scores_attr1, scores_attr2, scores_obj, all_triplets_true, attr1_f2d, attr2_f2d, obj_f2d, factorizer, pick_top_k):
+        labels = torch.LongTensor(
+            [self.dset.triplets2idx[triplet] for triplet in all_triplets_true]
+        )
+        attr1_true, attr2_true, obj_true = self.get_attr1_attr2_obj_from_triplets(labels)
+ 
+        seen_ids = [
+            i for i in range(len(all_triplets_true))
+            if all_triplets_true[i] in self.seen_triplets_set
+        ]
+        unseen_ids = [
+            i for i in range(len(all_triplets_true))
+            if all_triplets_true[i] not in self.seen_triplets_set
+        ]
+ 
+        attr1_preds, attr2_preds, obj_preds =self.predict_top_k(
+            img_embs, scores_attr1, scores_attr2, scores_obj,
+            attr1_f2d, attr2_f2d, obj_f2d, factorizer, pick_top_k
+        )
+        
+ 
+        attr1_acc = self.evaluate(attr1_preds, attr1_true, seen_ids, unseen_ids)['all_acc']
+        attr2_acc = self.evaluate(attr2_preds, attr2_true, seen_ids, unseen_ids)['all_acc']
+        obj_acc   = self.evaluate(obj_preds,   obj_true,   seen_ids, unseen_ids)['all_acc']
+ 
+        # Triplet accuracy: all three primitives simultaneously correct
+        attr1_correct = torch.eq(attr1_preds.squeeze(1), attr1_true)  # [N]
+        attr2_correct = torch.eq(attr2_preds.squeeze(1), attr2_true)
+        obj_correct   = torch.eq(obj_preds.squeeze(1),   obj_true)
+        triplet_correct = (attr1_correct & attr2_correct & obj_correct).numpy()
+ 
+        triplet_acc        = np.mean(triplet_correct)
+        seen_triplet_acc   = np.mean(triplet_correct[seen_ids])   if seen_ids   else 0.0
+        unseen_triplet_acc = np.mean(triplet_correct[unseen_ids]) if unseen_ids else 0.0
+ 
+        return {
+            "attr1_acc":          attr1_acc,
+            "attr2_acc":          attr2_acc,
+            "obj_acc":            obj_acc,
+            "triplet_acc":        triplet_acc,
+            "seen_triplet_acc":   seen_triplet_acc,
+            "unseen_triplet_acc": unseen_triplet_acc,
+        }
 
 
 # def select_n_embs_per_pair(embeddings, all_pairs, n: int):
@@ -613,9 +710,9 @@ def main(config: argparse.Namespace, verbose=False):
             
             # 4) Compute triplet/individual representations combining ideal words
             
-            if config.sequential:
-                attr1_emb, attr2_emb, obj_emb = factorizer.compute_ideal_words_approximation_sequential(
-                )
+            if config.sequential or config.top_k:
+                attr1_emb, attr2_emb, obj_emb = factorizer.compute_ideal_words_approximation_sequential()
+                         
             else:
                 test_triplets_embs = factorizer.compute_ideal_words_approximation(
                     target_triplets=test_dataset.triplets
@@ -625,6 +722,7 @@ def main(config: argparse.Namespace, verbose=False):
         image_embs, all_triplets_true = test_dataset.load_all_image_embs()
         image_embs = image_embs.to(device)
 
+        evaluator = Evaluator(test_dataset)
         if config.sequential: 
             scores_attr1 = compute_logits(image_embs, attr1_emb.to(device))  # [N x |attr1|]
             scores_attr2 = compute_logits(image_embs, attr2_emb.to(device))  # [N x |attr2|]
@@ -638,18 +736,33 @@ def main(config: argparse.Namespace, verbose=False):
             result = evaluator.get_sequential_metrics(
                 scores_attr1, scores_attr2, scores_obj, all_triplets_true, attr1_f2d=attr1_f2d, attr2_f2d=attr2_f2d, obj_f2d=obj_f2d
             )
+        elif config.top_k:
+    
+            scores_attr1 = compute_logits(image_embs, attr1_emb.to(device))  # (N, |A1|)
+            scores_attr2 = compute_logits(image_embs, attr2_emb.to(device))  # (N, |A2|)
+            scores_obj   = compute_logits(image_embs, obj_emb  .to(device))  # (N, |O|)
+ 
+            attr1_f2d = torch.LongTensor([test_dataset.attr1_idx[a] for a in factorizer.attrs1]).to(device)
+            attr2_f2d = torch.LongTensor([test_dataset.attr2_idx[a] for a in factorizer.attrs2]).to(device)
+            obj_f2d   = torch.LongTensor([test_dataset.obj2idx[o]   for o in factorizer.objs  ]).to(device)
+ 
+            result = evaluator.get_top_k_metrics(
+                image_embs,
+                scores_attr1, scores_attr2, scores_obj,
+                all_triplets_true,
+                attr1_f2d=attr1_f2d, attr2_f2d=attr2_f2d, obj_f2d=obj_f2d,
+                factorizer=factorizer,
+                pick_top_k=config.pick_top_k,
+            )
         else:
             test_triplets_embs = test_triplets_embs.to(device)
             logits = compute_logits(image_embs, test_triplets_embs)
-
-
-
-
-        # Evaluate predictions
-        evaluator = Evaluator(test_dataset)
-        result = evaluator.get_overall_metrics(logits,
+            result = evaluator.get_overall_metrics(logits,
                                                all_triplets_true,
                                                progress_bar=False)[1]  # topk=1
+
+
+
 
         all_results.append(result)
 
@@ -725,3 +838,13 @@ if __name__ == '__main__':
         "--sequential",
         help="use sequential primitive scoring instead of exhaustive triplet scoring",
         action="store_true")
+    
+
+    parser.add_argument( #new
+        "--top_k",
+        help="top k sequential followed by GDE",
+        action="store_true")
+    
+    parser.add_argument("--pick_top_k",                    
+                        help="number of candidates to rerank in top_k mode",
+                        type=int, default=20)
