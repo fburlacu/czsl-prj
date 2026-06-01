@@ -118,6 +118,6 @@ for triplet, s in triplet_split.items():
 os.makedirs(os.path.join(new_root, split_name), exist_ok=True)
 for s in sets:
     pairs = sorted(split_triplets[s])
-    with open(os.path.join(new_root, split_name, f'{s}_pairs.txt'), 'w+') as file:
+    with open(os.path.join(new_root, split_name, f'{s}_triplets.txt'), 'w+') as file:
         file.writelines([f"{a1} {a2} {o}\n" for a1, a2, o in pairs])
  
