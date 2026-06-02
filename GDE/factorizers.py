@@ -37,6 +37,48 @@ def compute_group_means(embeddings, group_ids, unique_groups, weights=None):
 
     return torch.stack(means)
 
+def compute_cond_means(embeddings, all_triplets_cond, attr, obj, weights=None):
+    matching_indices = []
+    for i, (attr1, attr2, triplet_obj) in enumerate(all_triplets_cond):
+        if (attr2 == attr or attr1 == attr) and triplet_obj == obj:
+            matching_indices.append(i)
+    
+    if not matching_indices:
+        return None  # or raise an error if no matches found
+    
+    matching_indices = torch.tensor(matching_indices, device=embeddings.device)
+    group_weights = None if weights is None else weights[matching_indices]
+    cond_mean = weighted_mean(embeddings[matching_indices], group_weights)
+    
+    return cond_mean
+
+def compute_cond_means_obj(embeddings, all_triplets_gt, obj, weights=None):
+    matching_indices = []
+    for i, (triplet_attr1, triplet_attr2, triplet_obj) in enumerate(all_triplets_gt):
+        if triplet_obj == obj:
+            matching_indices.append(i)
+    
+    if not matching_indices:
+        return None
+    
+    matching_indices = torch.tensor(matching_indices, device=embeddings.device)
+    group_weights = None if weights is None else weights[matching_indices]
+    cond_mean = weighted_mean(embeddings[matching_indices], group_weights)
+    
+    return cond_mean
+
+def compute_all_obj_means(embeddings, all_triplets_gt, attr1, attr2, weights=None):
+    objs = [triplet[2] for triplet in all_triplets_gt]
+    unique_objs = sorted(set(objs))
+    
+    obj_means = {}
+    for obj in unique_objs:
+        obj_mean = compute_cond_means_obj(embeddings, all_triplets_gt, attr1=None, attr2=None, obj=obj, weights=weights)
+        if obj_mean is not None:
+            obj_means[obj] = obj_mean
+    
+    return obj_means
+
 
 # def compute_attr_obj_means(embeddings, all_pairs_gt, centered=True, weights=None):
 #     '''
@@ -56,6 +98,25 @@ def compute_group_means(embeddings, group_ids, unique_groups, weights=None):
 #         obj_means = obj_means - mean_all
 
 #     return mean_all, attr_means, obj_means
+
+def compute_obj_means(embeddings, all_triplets_gt):
+    for attr1, attr2, obj in all_triplets_gt:
+        obj_emb = compute_cond_means_obj(embeddings, all_triplets_gt, obj)
+    return obj_emb
+        
+
+
+def compute_attr_means(embeddings, all_triplets_gt, obj):
+    for attr1 in all_triplets_gt[attr1, attr2, obj]:
+            attr1_obj_emb =compute_cond_means(embeddings, all_triplets_gt, attr1, obj)
+            
+    for attr2 in all_triplets_gt[attr1, attr2, obj]:
+                attr2_obj_emb =compute_cond_means(embeddings, all_triplets_gt, attr2, obj)
+            
+
+    #should return attr1_obj_emb, attr2_obj_emb
+    return attr1_obj_emb, attr2_obj_emb
+
 
 def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, weights=None):  #changed to handle second attribute
 

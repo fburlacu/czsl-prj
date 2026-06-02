@@ -567,21 +567,20 @@ def main(config: argparse.Namespace, verbose=False):
             # test_pair_embs = factorizer.compute_ideal_words_approximation(
             #     target_pairs=test_dataset.pairs
             #     )
+            image_embs, all_triplets_true = test_dataset.load_all_image_embs()
+            image_embs = image_embs.to(device)
 
-            test_triplets_embs = factorizer.compute_ideal_words_approximation(   #added this 
-                target_triplets=test_dataset.triplets
-                )
-        
-        # Compute predictions
-        # image_embs, all_pairs_true  = test_dataset.load_all_image_embs()
+            #test for objects
+            objs = [] #list of unique objects
+            for obj in test_triplets_embs[_,_,obj]:
+                if obj not in objs:
+                    objs.append(obj)
+            objs_emb = factorizer.compute_obj_means(objs)
+            obj_logits = compute_logits(image_embs, objs_emb)
+            best_obj = objs[np.argmax(obj_logits)]
 
-
-        image_embs, all_triplets_true = test_dataset.load_all_image_embs()
-        image_embs = image_embs.to(device)
-
-
-        # test_pair_embs = test_pair_embs.to(device)
-
+            test_triplets_embs_attr1, test_triplets_embs_attr2 = factorizer.compute_attr_means(test_triplets_embs, all_triplets_true, best_obj)
+            test_triplets_embs = factorizer.combine_ideal_words(test_triplets_embs_attr1, test_triplets_embs_attr2)
 
         test_triplets_embs = test_triplets_embs.to(device)
         logits = compute_logits(image_embs, test_triplets_embs)
