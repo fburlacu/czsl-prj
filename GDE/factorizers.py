@@ -99,23 +99,46 @@ def compute_all_obj_means(embeddings, all_triplets_gt, attr1, attr2, weights=Non
 
 #     return mean_all, attr_means, obj_means
 
-def compute_obj_means(embeddings, all_triplets_gt):
-    for attr1, attr2, obj in all_triplets_gt:
-        obj_emb = compute_cond_means_obj(embeddings, all_triplets_gt, obj)
-    return obj_emb
-        
 
 
-def compute_attr_means(embeddings, all_triplets_gt, obj):
-    for attr1 in all_triplets_gt[attr1, attr2, obj]:
-            attr1_obj_emb =compute_cond_means(embeddings, all_triplets_gt, attr1, obj)
-            
-    for attr2 in all_triplets_gt[attr1, attr2, obj]:
-                attr2_obj_emb =compute_cond_means(embeddings, all_triplets_gt, attr2, obj)
-            
+#list of all object means
+def compute_obj_means(embeddings, all_triplets_gt, weights = None):
+    object_list = [triplet[2] for triplet in all_triplets_gt]  #all the objects
+    unique_objects = sorted(set(object_list)) #list of unique objects
 
-    #should return attr1_obj_emb, attr2_obj_emb
-    return attr1_obj_emb, attr2_obj_emb
+    list_of_object_mean = []
+    for obj in unique_objects:
+        object_mean  = compute_cond_means_obj(embeddings, all_triplets_gt, obj, weights)
+        list_of_object_mean.append(object_mean)
+    return torch.stack(object_mean), unique_objects
+
+
+
+    
+
+
+def compute_attr_means(embeddings, all_triplets_gt, obj_, weights):
+    required_attr1 = []
+    required_attr2 = []
+    required_idx   = []  
+    for i, (attr1, attr2, obj) in enumerate(all_triplets_gt):
+        if obj == obj_:
+            required_attr1.append(attr1)
+            required_attr2.append(attr2)
+            required_idx.append(i)
+    filtered_embeddings = embeddings[torch.tensor(required_idx)]
+
+    unq_attr1 = sorted(set(required_attr1))
+    attr1_obj_mean = compute_group_means(filtered_embeddings, required_attr1, unq_attr1, weights)
+
+
+    unq_attr2 = sorted(set(required_attr2))
+    attr2_obj_mean = compute_group_means(filtered_embeddings, required_attr2, unq_attr2, weights)
+
+    return attr1_obj_mean, attr2_obj_mean, unq_attr1, unq_attr2
+
+    
+
 
 
 def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, weights=None):  #changed to handle second attribute

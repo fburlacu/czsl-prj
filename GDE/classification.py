@@ -567,33 +567,71 @@ def main(config: argparse.Namespace, verbose=False):
             # test_pair_embs = factorizer.compute_ideal_words_approximation(
             #     target_pairs=test_dataset.pairs
             #     )
+
+
+
+            #FOR CONDITIOOOOOOOOOOOOONAL
             image_embs, all_triplets_true = test_dataset.load_all_image_embs()
             image_embs = image_embs.to(device)
 
-            #test for objects
-            objs = [] #list of unique objects
-            for obj in test_triplets_embs[_,_,obj]:
-                if obj not in objs:
-                    objs.append(obj)
-            objs_emb = factorizer.compute_obj_means(objs)
-            obj_logits = compute_logits(image_embs, objs_emb)
-            best_obj = objs[np.argmax(obj_logits)]
+            #test for objects, we wanna go thru all |O| (ALL OBJECTS AND FIND THE BEST ONE)
+            #we get object embedding from training.
+            obj_embs, unique_objs  = factorizer.compute_obj_means(factorizer.embs_for_IW, factorizer.all_triplets_gt, factorizer.weights)
+            obj_scores = compute_logits(image_embs, obj_embs.to(device)) 
+            best_object_index = obj_scores.argmax(dim = 1)
+            best_object_names = [unique_objs[i] for i in best_object_index.tolist()] 
 
-            test_triplets_embs_attr1, test_triplets_embs_attr2 = factorizer.compute_attr_means(test_triplets_embs, all_triplets_true, best_obj)
-            test_triplets_embs = factorizer.combine_ideal_words(test_triplets_embs_attr1, test_triplets_embs_attr2)
-
-        test_triplets_embs = test_triplets_embs.to(device)
-        logits = compute_logits(image_embs, test_triplets_embs)
+            unique_predicted_objs = sorted(set(best_object_names))
+            attr1_embs_cond_obj  = {}
+            attr2_embs_cond_obj  = {}
+            attr1_names_cond_obj = {}
+            attr2_names_cond_obj = {}
 
 
+            for obj in unique_predicted_objs: 
+                attr1_emb, attr2_emd, unq_attr1, unq_attr2  = factorizer.compute_attr_means(obj)
+                attr1_embs_cond_obj[obj] = attr1_emb
+                attr2_embs_cond_obj[obj] = attr2_emd
+                attr1_names_cond_obj[obj] = unq_attr1
+                attr2_names_cond_obj[obj] = unq_attr2
+            
+            attr1_prediction , attr2_prediction = [], []
 
+            for i in range(len(image_embs)):
+                obj = best_object_names[i]
+                img = image_embs[i].unsqueeze(0)   
+
+                attr1_logit = compute_logits(img, attr1_embs_cond_obj[obj].to(device)).unsqueeze(0)
+                attr2_logit = compute_logits(img, attr2_embs_cond_obj[obj].to(device)).unsqueeze(0)
+
+                best_attr1 = attr1_names_cond_obj[obj][attr1_logit.argmax().item()] 
+                best_attr2 = attr2_names_cond_obj[obj][attr2_logit.argmax().item()] 
+
+                attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+
+            obj_f2d     = torch.LongTensor(
+                        [test_dataset.obj2idx[o] for o in unique_objs]).to(device)
+            
+            attr1_preds = torch.LongTensor(attr1_prediction)
+            attr2_preds = torch.LongTensor(attr2_prediction)
+            obj_preds = obj_f2d[best_object_index]
+            
+
+            #SEND TO EVALUATOR TO BE DONE
+            #UNTIL HERE
+
+
+        #USUAL WAY
+        # test_triplets_embs = test_triplets_embs.to(device)
+        # logits = compute_logits(image_embs, test_triplets_embs)
         # logits = compute_logits(image_embs, test_pair_embs)
 
         # Evaluate predictions
         evaluator = Evaluator(test_dataset)
-        result = evaluator.get_overall_metrics(logits,
-                                               all_triplets_true,
-                                               progress_bar=False)[1]  # topk=1
+        # result = evaluator.get_overall_metrics(logits,
+        #                                        all_triplets_true,
+        #                                        progress_bar=False)[1]  # topk=1
 
         all_results.append(result)
 
