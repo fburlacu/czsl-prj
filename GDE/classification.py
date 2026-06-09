@@ -617,21 +617,70 @@ def main(config: argparse.Namespace, verbose=False):
             attr2_preds = torch.LongTensor(attr2_prediction)
             obj_preds = obj_f2d[best_object_index]
             
+            
+            evaluator = Evaluator(test_dataset)
+            labels = torch.LongTensor([test_dataset.triplets2idx[t] for t in all_triplets_true])
+            
+            attr1_true, attr2_true, obj_true = evaluator.get_attr1_attr2_obj_from_triplets(labels)
 
-            #SEND TO EVALUATOR TO BE DONE
-            #UNTIL HERE
+            seen_ids = [
+                i for i in range(len(all_triplets_true))
+                if all_triplets_true[i] in evaluator.seen_triplets_set
+            ]
+            unseen_ids = [
+                i for i in range(len(all_triplets_true))
+                if all_triplets_true[i] not in evaluator.seen_triplets_set
+            ]
 
 
-        #USUAL WAY
-        # test_triplets_embs = test_triplets_embs.to(device)
-        # logits = compute_logits(image_embs, test_triplets_embs)
-        # logits = compute_logits(image_embs, test_pair_embs)
+            def acc_new(pred, true):
+                correct = (pred == true).cpu().numpy()
+                return{
+                    "all_acc" : correct.mean(),
+                    "seen_acc" : correct[seen_ids].mean(),
+                    "unseen_acc" : correct[unseen_ids].mean()
+                }
+            
+            attr1_acc = acc_new(attr1_preds, attr1_true)
+            attr2_acc = acc_new(attr2_preds, attr2_true)
+            obj_acc = acc_new(obj_preds, obj_true)
 
-        # Evaluate predictions
-        evaluator = Evaluator(test_dataset)
-        # result = evaluator.get_overall_metrics(logits,
-        #                                        all_triplets_true,
-        #                                        progress_bar=False)[1]  # topk=1
+            result = {
+            "attr1_acc": attr1_acc["all_acc"],
+            "attr2_acc": attr2_acc["all_acc"],
+            "obj_acc": obj_acc["all_acc"],
+        }
+            attr1_correct   = torch.eq(attr1_preds, attr1_true)
+            attr2_correct   = torch.eq(attr2_preds, attr2_true)
+            obj_correct     = torch.eq(obj_preds,   obj_true)
+            triplet_correct = (attr1_correct & attr2_correct & obj_correct).numpy()
+
+
+            result = {
+            "attr1_acc":          attr1_acc["all_acc"],
+            "attr2_acc":          attr2_acc["all_acc"],
+            "obj_acc":            obj_acc["all_acc"],
+            "seen_attr1_acc":     attr1_acc["seen_acc"],
+            "unseen_attr1_acc":   attr1_acc["unseen_acc"],
+            "seen_attr2_acc":     attr2_acc["seen_acc"],
+            "unseen_attr2_acc":   attr2_acc["unseen_acc"],
+            "seen_obj_acc":       obj_acc["seen_acc"],
+            "unseen_obj_acc":     obj_acc["unseen_acc"],
+            "triplet_acc":        triplet_correct.mean(),
+            "seen_triplet_acc":   triplet_correct[seen_ids].mean(),
+            "unseen_triplet_acc": triplet_correct[unseen_ids].mean(),
+        }
+
+            #USUAL WAY
+            # test_triplets_embs = test_triplets_embs.to(device)
+            # logits = compute_logits(image_embs, test_triplets_embs)
+            # logits = compute_logits(image_embs, test_pair_embs)
+
+            # Evaluate predictions
+            # evaluator = Evaluator(test_dataset)
+            # result = evaluator.get_overall_metrics(logits,
+            #                                        all_triplets_true,
+            #                                        progress_bar=False)[1]  # topk=1
 
         all_results.append(result)
 
