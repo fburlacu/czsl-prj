@@ -23,14 +23,13 @@ def compute_group_means(embeddings, group_ids, unique_groups, weights=None):
     Computes the mean vector for each group in unique_groups.
     Vector embeddings[i] and embeddings[j] belongs to the same group iff group_ids[i]=group_ids[j].
     '''
-    group_id2idx= {id: [] for id in unique_groups}
+    group_id2idx = {id: [] for id in unique_groups}
     for i, group_id in enumerate(group_ids):
         group_id2idx[group_id].append(i)
-    
+
     means = []
     for id in unique_groups:
         idx = group_id2idx[id]
-
         group_weights = None if weights is None else weights[idx]
         group_mean = weighted_mean(embeddings[idx], group_weights)
         means.append(group_mean)
@@ -38,145 +37,77 @@ def compute_group_means(embeddings, group_ids, unique_groups, weights=None):
     return torch.stack(means)
 
 
-# def compute_attr_obj_means(embeddings, all_pairs_gt, centered=True, weights=None):
-#     '''
-#     Computes mean for each attribute and object.
-#     If two or more embeddings have the same pair, a the denoising step is performed first.
-#     `weights` gives the weight distribution within pair. If None, uniform weights are used.
-#     '''
-
-#     mean_all = weighted_mean(embeddings, weights)
-    
-#     attrs, objs = zip(*all_pairs_gt)
-#     attr_means = compute_group_means(embeddings, attrs, sorted(set(attrs)), weights)  # sorted wrt unique attrs
-#     obj_means = compute_group_means(embeddings, objs, sorted(set(objs)), weights)     # sorted wrt unique objs
-    
-#     if centered:
-#         attr_means = attr_means - mean_all
-#         obj_means = obj_means - mean_all
-
-#     return mean_all, attr_means, obj_means
-
-def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, weights=None):  #changed to handle second attribute
-
-
+def compute_attr_obj_means(embeddings, all_pairs_gt, centered=True, weights=None):
     mean_all = weighted_mean(embeddings, weights)
-    
-    attrs1, attrs2, objs = zip(*all_triplets_gt)
-    attr1_means = compute_group_means(embeddings, attrs1, sorted(set(attrs1)), weights)    #attr1
-    attr2_means = compute_group_means(embeddings, attrs2, sorted(set(attrs2)), weights)    #attr2
-    obj_means   = compute_group_means(embeddings, objs, sorted(set(objs)), weights)     # sorted wrt unique objs
-    
-    if centered:
-        attr1_means = attr1_means - mean_all
-        attr2_means = attr2_means - mean_all
-        obj_means = obj_means - mean_all
 
-    return mean_all, attr1_means, attr2_means, obj_means
+    attrs, objs = zip(*all_pairs_gt)
+    attr_means = compute_group_means(embeddings, attrs, sorted(set(attrs)), weights)
+    obj_means  = compute_group_means(embeddings, objs,  sorted(set(objs)),  weights)
+
+    if centered:
+        attr_means = attr_means - mean_all
+        obj_means  = obj_means  - mean_all
+
+    return mean_all, attr_means, obj_means
 
 
 # Factorizers
 
 class CompositionalFactorizer:
 
-    def __init__(self, embs_for_IW, all_triplets_gt, weights=None):
+    def __init__(self, embs_for_IW, all_pairs_gt, weights=None):
         '''
         Class that represents a compositional structure for a set of embeddings.
         Input:
-            dataset: dataset of the embeddings
-            embs_for_IW: embeddings used to compute the Ideal Words (primitive directions in the optimal decomposition)
-            all_pair_gt: (attr, obj) label for `embs_for_IW`
-            weights: weights assigned to the `embs_for_IW`, if `None` uniform weights are used. Weights are automatically normalized within pair.
+            embs_for_IW: embeddings used to compute the Ideal Words
+            all_pairs_gt: (attr, obj) label for `embs_for_IW`
+            weights: weights assigned to `embs_for_IW`. If None, uniform weights are used.
         '''
         self.device = embs_for_IW.device
-        # self.all_pairs_gt = all_pairs_gt
-        self.all_triplets_gt = all_triplets_gt
-        self.embs_for_IW = embs_for_IW
-        self.weights = weights
+        self.all_pairs_gt = all_pairs_gt
+        self.embs_for_IW  = embs_for_IW
+        self.weights      = weights
 
-        attrs1, attrs2, objs = zip(*all_triplets_gt)
-        self.attrs1 = sorted(set(attrs1))
-        self.attrs2 = sorted(set(attrs2))  #new new
-        self.objs = sorted(set(objs))
+        attrs, objs = zip(*all_pairs_gt)
+        self.attrs = sorted(set(attrs))
+        self.objs  = sorted(set(objs))
 
-        self.attr1_idx = {attr1: idx for idx, attr1 in enumerate(self.attrs1)}
-        self.attr2_idx = {attr2: idx for idx, attr2 in enumerate(self.attrs2)}
-        self.obj2idx   = {obj: idx for idx, obj in enumerate(self.objs)}
+        self.attr2idx = {attr: idx for idx, attr in enumerate(self.attrs)}
+        self.obj2idx  = {obj:  idx for idx, obj  in enumerate(self.objs)}
 
-        # Compute IW for attrs and objs in dataset
-        self.context, self.attr1_IW, self.attr2_IW, self.obj_IW = self.compute_ideal_words(
+        self.context, self.attr_IW, self.obj_IW = self.compute_ideal_words(
             embeddings=embs_for_IW,
-            all_triplets_gt=all_triplets_gt,
+            all_pairs_gt=all_pairs_gt,
             weights=weights
         )
 
-    def compute_ideal_words(self, embeddings, all_triplets_gt):
-        '''
-        Extracts ideal words from `embeddings` labeled with `all_triplets_gt`.
-        '''
-        raise(NotImplementedError)
-    
+    def compute_ideal_words(self, embeddings, all_pairs_gt, weights):
+        raise NotImplementedError
+
     def combine_ideal_words(self, *ideal_words, context=None):
-        '''
-        Combines ideal words using `context` as center.
-        If context is `None`, `self.context` is used.
-        '''
-        raise(NotImplementedError)
-    
-    def get_attr1_IW(self, attr1):
-        attr1_idx = self.attr1_idx[attr1]
-        return self.attr1_IW[attr1_idx]
-    
-    def get_attr2_IW(self, attr2):
-        attr2_idx = self.attr2_idx[attr2]
-        return self.attr2_IW[attr2_idx]
-    
+        raise NotImplementedError
+
+    def get_attr_IW(self, attr):
+        return self.attr_IW[self.attr2idx[attr]]
+
     def get_obj_IW(self, obj):
-        obj_idx = self.obj2idx[obj]
-        return self.obj_IW[obj_idx]
+        return self.obj_IW[self.obj2idx[obj]]
 
-    # def compute_ideal_words_approximation(self, target_pairs):
-    #     target_attr_idx = torch.tensor(
-    #         [self.attr2idx[attr] for attr, _ in target_pairs],
-    #         device=self.device)
-    #     target_obj_idx = torch.tensor(
-    #         [self.obj2idx[obj] for _, obj in target_pairs],
-    #         device=self.device)
-        
-    #     # Select attr_IW and obj_IW for target pairs
-    #     attrIW_target = self.attr_IW[target_attr_idx]
-    #     objIW_target = self.obj_IW[target_obj_idx]
-
-    #     # Compute IW approximation for target pairs
-    #     target_IWapprox = self.combine_ideal_words(attrIW_target, objIW_target)
-
-    #     return target_IWapprox
-
-    def compute_ideal_words_approximation(self, target_triplet):  #handles triplets
-        target_attr1_idx = torch.tensor(
-            [self.attr1_idx[attr1] for attr1, _, _ in target_triplet],
+    def compute_ideal_words_approximation(self, target_pairs):
+        target_attr_idx = torch.tensor(
+            [self.attr2idx[attr] for attr, _ in target_pairs],
             device=self.device)
-        
-        target_attr2_idx = torch.tensor(
-            [self.attr2_idx[attr2] for _, attr2, _ in target_triplet],
-            device=self.device)
-        
         target_obj_idx = torch.tensor(
-            [self.obj2idx[obj] for _, _, obj in target_triplet],
+            [self.obj2idx[obj] for _, obj in target_pairs],
             device=self.device)
-        
-        # Select attr_IW and obj_IW for target pairs
-        attr1IW_target = self.attr1_IW[target_attr1_idx]
-        attr2IW_target = self.attr2_IW[target_attr2_idx]
-        objIW_target = self.obj_IW[target_obj_idx]
 
-        # Compute IW approximation for target pairs
-        target_IWapprox = self.combine_ideal_words(attr1IW_target, attr2IW_target, objIW_target)
+        attrIW_target = self.attr_IW[target_attr_idx]
+        objIW_target  = self.obj_IW[target_obj_idx]
 
-        return target_IWapprox
-    
+        return self.combine_ideal_words(attrIW_target, objIW_target)
+
     def compute_ideal_words_approximation_sequential(self):
-        return self.attr1_IW, self.attr2_IW, self.obj_IW
+        return self.attr_IW, self.obj_IW
 
     def __str__(self) -> str:
         return self.name
@@ -185,77 +116,58 @@ class CompositionalFactorizer:
 class LDE(CompositionalFactorizer):
     name = 'LDE'
 
-    def compute_ideal_words(self, embeddings, all_triplets_gt, weights):
-        return compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, weights=weights)
+    def compute_ideal_words(self, embeddings, all_pairs_gt, weights):
+        return compute_attr_obj_means(embeddings, all_pairs_gt, weights=weights)
 
     def combine_ideal_words(self, *ideal_words, context=None):
         if context is None:
             context = self.context
         ideal_words = torch.stack(ideal_words)
         return context + torch.sum(ideal_words, dim=0)
-    
-    # def get_denoised_pair(self):
-    #     unique_pairs = list(set(self.all_pairs_gt))
-    #     denoised_pair = compute_group_means(self.embs_for_IW, self.all_pairs_gt, unique_pairs)
-    #     return unique_pairs, denoised_pair
 
-    def get_denoised_triplets(self):  #handles triplets
-        unique_triplets = list(set(self.all_triplets_gt))
-        denoised_triplets = compute_group_means(self.embs_for_IW, self.all_pairs_gt, unique_triplets)
-        return unique_triplets, denoised_triplets
+    def get_denoised_pair(self):
+        unique_pairs = list(set(self.all_pairs_gt))
+        denoised_pair = compute_group_means(self.embs_for_IW, self.all_pairs_gt, unique_pairs)
+        return unique_pairs, denoised_pair
 
 
-class GDE(CompositionalFactorizer):  #important
+class GDE(CompositionalFactorizer):
     name = 'GDE'
-    
-    def compute_ideal_words(self, embeddings, all_triplets_gt, weights):
-        intrinsic_mean = calculate_intrinstic_mean(embeddings, weights, init='normalized mean')  # mu
 
-        # 1) Map embedding to the tangent space T_muS^n
+    def compute_ideal_words(self, embeddings, all_pairs_gt, weights):
+        intrinsic_mean = calculate_intrinstic_mean(embeddings, weights, init='normalized mean')
+
         embeddings_T = logarithmic_map(intrinsic_mean, embeddings)
 
-        # 2) Compute IW on the tangent space
-        v_c, attr1_IW, attr2_IW, obj_IW = compute_attr1_attr2_obj_means(embeddings_T, all_triplets_gt, weights=weights)
-        assert torch.norm(v_c, p=2) < 1e-5 # should be v_c=0  (WILL LOOK INTO THIS)
+        v_c, attr_IW, obj_IW = compute_attr_obj_means(embeddings_T, all_pairs_gt, weights=weights)
+        assert torch.norm(v_c, p=2) < 1e-5  # should be v_c=0
 
-        context = intrinsic_mean
-        return context, attr1_IW, attr2_IW , obj_IW
+        return intrinsic_mean, attr_IW, obj_IW
 
     def combine_ideal_words(self, *ideal_words, context=None):
         if context is None:
-            original_contex = True
+            original_context = True
             context = self.context
         else:
-            original_contex = False
+            original_context = False
 
-        # 3) Combine ideal words in the tangent plane
         ideal_words = torch.stack(ideal_words)
         embs_approx_T = torch.sum(ideal_words, dim=0)
 
-        # 4) Map the obtained approximation back to the sphere
-        if original_contex:
+        if original_context:
             embs_approx = exponential_map(context, embs_approx_T)
         else:
-            # If context is not mu, we need to transport embs_approx_T from T_muS^n to T_contextS^n
             embs_approx_T_transported = parallel_transport(self.context, context, embs_approx_T)
             embs_approx = exponential_map(context, embs_approx_T_transported)
-        
+
         return embs_approx
 
-    # def get_denoised_pair(self):
-    #     unique_pairs = list(set(self.all_pairs_gt))
-    #     embs_T = logarithmic_map(self.context, self.embs_for_IW)
-    #     denoised_pair_T = compute_group_means(embs_T, self.all_pairs_gt, unique_pairs)
-    #     denoised_pair = exponential_map(self.context, denoised_pair_T)
-    #     return unique_pairs, denoised_pair
-
     def get_denoised_pair(self):
-        unique_triplets = list(set(self.all_triplets_gt))
+        unique_pairs = list(set(self.all_pairs_gt))
         embs_T = logarithmic_map(self.context, self.embs_for_IW)
-        denoised_triplets_T = compute_group_means(embs_T, self.all_triplets_gt, unique_triplets)
-        denoised_triplets = exponential_map(self.context, denoised_triplets_T)
-        return unique_triplets, denoised_triplets
-
+        denoised_pairs_T = compute_group_means(embs_T, self.all_pairs_gt, unique_pairs)
+        denoised_pairs = exponential_map(self.context, denoised_pairs_T)
+        return unique_pairs, denoised_pairs
 
 
 FACTORIZERS = {
