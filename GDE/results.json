@@ -1,0 +1,28 @@
+{
+    "config": {
+        "dataset": "3_attribute_dataset_5x5x5",
+        "model_architecture": "ViT-L-14",
+        "model_pretraining": "openai",
+        "experiment_name": "LDE",
+        "modality_IW": "image",
+        "n_images": null,
+        "open_world": false,
+        "n_exp": 1,
+        "test_phase": "test",
+        "result_path": "results.json"
+    },
+    "result": {
+        "attr1_acc": 0.64,
+        "attr2_acc": 0.56,
+        "obj_acc": 1.0,
+        "seen_attr1_acc": NaN,
+        "unseen_attr1_acc": 0.64,
+        "seen_attr2_acc": NaN,
+        "unseen_attr2_acc": 0.56,
+        "seen_obj_acc": NaN,
+        "unseen_obj_acc": 1.0,
+        "triplet_acc": 0.3626666666666667,
+        "seen_triplet_acc": NaN,
+        "unseen_triplet_acc": 0.3626666666666667
+    }
+}

@@ -1,0 +1,28 @@
+{
+    "config": {
+        "dataset": "3_attribute_dataset_5x5x5",
+        "model_architecture": "ViT-L-14",
+        "model_pretraining": "openai",
+        "experiment_name": "GDE",
+        "modality_IW": "text",
+        "n_images": null,
+        "open_world": false,
+        "n_exp": 1,
+        "test_phase": "test",
+        "result_path": "results_5x5x5_GDE_text.json"
+    },
+    "result": {
+        "attr1_acc": 0.9946666666666667,
+        "attr2_acc": 0.76,
+        "obj_acc": 1.0,
+        "seen_attr1_acc": NaN,
+        "unseen_attr1_acc": 0.9946666666666667,
+        "seen_attr2_acc": NaN,
+        "unseen_attr2_acc": 0.76,
+        "seen_obj_acc": NaN,
+        "unseen_obj_acc": 1.0,
+        "triplet_acc": 0.7546666666666667,
+        "seen_triplet_acc": NaN,
+        "unseen_triplet_acc": 0.7546666666666667
+    }
+}
