@@ -99,57 +99,13 @@ def compute_all_obj_means(embeddings, all_triplets_gt, attr1, attr2, weights=Non
 
 #     return mean_all, attr_means, obj_means
 
-
-
-#list of all object means
-def compute_obj_means(embeddings, all_triplets_gt, weights = None):
-    object_list = [triplet[2] for triplet in all_triplets_gt]  #all the objects
-    unique_objects = sorted(set(object_list)) #list of unique objects
-
-    list_of_object_mean = []
-    for obj in unique_objects:
-        object_mean  = compute_cond_means_obj(embeddings, all_triplets_gt, obj, weights)
-        list_of_object_mean.append(object_mean)
-    return torch.stack(object_mean), unique_objects
-
-
-
-    
-
-
-def compute_attr_means(embeddings, all_triplets_gt, obj_, weights):
-    required_attr1 = []
-    required_attr2 = []
-    required_idx   = []  
-    for i, (attr1, attr2, obj) in enumerate(all_triplets_gt):
-        if obj == obj_:
-            required_attr1.append(attr1)
-            required_attr2.append(attr2)
-            required_idx.append(i)
-    filtered_embeddings = embeddings[torch.tensor(required_idx)]
-
-    unq_attr1 = sorted(set(required_attr1))
-    attr1_obj_mean = compute_group_means(filtered_embeddings, required_attr1, unq_attr1, weights)
-
-
-    unq_attr2 = sorted(set(required_attr2))
-    attr2_obj_mean = compute_group_means(filtered_embeddings, required_attr2, unq_attr2, weights)
-
-    return attr1_obj_mean, attr2_obj_mean, unq_attr1, unq_attr2
-
-    
-
-
-
-def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, weights=None):  #changed to handle second attribute
-
-
+def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, weights=None):
     mean_all = weighted_mean(embeddings, weights)
     
     attrs1, attrs2, objs = zip(*all_triplets_gt)
-    attr1_means = compute_group_means(embeddings, attrs1, sorted(set(attrs1)), weights)    #attr1
-    attr2_means = compute_group_means(embeddings, attrs2, sorted(set(attrs2)), weights)    #attr2
-    obj_means   = compute_group_means(embeddings, objs, sorted(set(objs)), weights)     # sorted wrt unique objs
+    attr1_means = compute_group_means(embeddings, attrs1, sorted(set(attrs1)), weights)
+    attr2_means = compute_group_means(embeddings, attrs2, sorted(set(attrs2)), weights)
+    obj_means   = compute_group_means(embeddings, objs, sorted(set(objs)), weights)
     
     if centered:
         attr1_means = attr1_means - mean_all
@@ -157,6 +113,43 @@ def compute_attr1_attr2_obj_means(embeddings, all_triplets_gt, centered=True, we
         obj_means = obj_means - mean_all
 
     return mean_all, attr1_means, attr2_means, obj_means
+
+# #list of all object means
+# def compute_obj_means(embeddings, all_triplets_gt, weights = None):
+#     object_list = [triplet[2] for triplet in all_triplets_gt]  #all the objects
+#     unique_objects = sorted(set(object_list)) #list of unique objects
+
+#     list_of_object_mean = []
+#     for obj in unique_objects:
+#         object_mean  = compute_cond_means_obj(embeddings, all_triplets_gt, obj, weights)
+#         list_of_object_mean.append(object_mean)
+#     return torch.stack(object_mean), unique_objects
+
+
+
+    
+
+
+# def compute_attr_means(embeddings, all_triplets_gt, obj_, weights):
+#     required_attr1 = []
+#     required_attr2 = []
+#     required_idx   = []  
+#     for i, (attr1, attr2, obj) in enumerate(all_triplets_gt):
+#         if obj == obj_:
+#             required_attr1.append(attr1)
+#             required_attr2.append(attr2)
+#             required_idx.append(i)
+#     filtered_embeddings = embeddings[torch.tensor(required_idx)]
+
+#     unq_attr1 = sorted(set(required_attr1))
+#     attr1_obj_mean = compute_group_means(filtered_embeddings, required_attr1, unq_attr1, weights)
+
+
+#     unq_attr2 = sorted(set(required_attr2))
+#     attr2_obj_mean = compute_group_means(filtered_embeddings, required_attr2, unq_attr2, weights)
+
+#     return attr1_obj_mean, attr2_obj_mean, unq_attr1, unq_attr2
+
 
 
 # Factorizers
@@ -188,7 +181,7 @@ class CompositionalFactorizer:
         self.obj2idx   = {obj: idx for idx, obj in enumerate(self.objs)}
 
         # Compute IW for attrs and objs in dataset
-        self.context, self.attr_IW, self.obj_IW = self.compute_ideal_words(
+        self.context, self.attr1_IW, self.attr2_IW, self.obj_IW = self.compute_ideal_words(
             embeddings=embs_for_IW,
             all_triplets_gt=all_triplets_gt,
             weights=weights
@@ -236,6 +229,38 @@ class CompositionalFactorizer:
 
     #     return target_IWapprox
 
+    def compute_obj_means(self, embeddings, all_triplets_gt, weights=None):
+        object_list = [triplet[2] for triplet in all_triplets_gt]
+        unique_objects = sorted(set(object_list))
+
+        list_of_object_mean = []
+        for obj in unique_objects:
+            object_mean  = compute_cond_means_obj(embeddings, all_triplets_gt, obj, weights)
+            list_of_object_mean.append(object_mean)
+        return torch.stack(list_of_object_mean), unique_objects
+
+    def compute_attr_means(self, obj_):
+        required_attr1 = []
+        required_attr2 = []
+        required_idx   = []  
+        for i, (attr1, attr2, obj) in enumerate(self.all_triplets_gt):
+            if obj == obj_:
+                required_attr1.append(attr1)
+                required_attr2.append(attr2)
+                required_idx.append(i)
+        
+        # Filter embeddings and weights to match the specific object
+        filtered_embeddings = self.embs_for_IW[torch.tensor(required_idx)]
+        filtered_weights = self.weights[torch.tensor(required_idx)] if self.weights is not None else None
+
+        unq_attr1 = sorted(set(required_attr1))
+        attr1_obj_mean = compute_group_means(filtered_embeddings, required_attr1, unq_attr1, filtered_weights)
+
+        unq_attr2 = sorted(set(required_attr2))
+        attr2_obj_mean = compute_group_means(filtered_embeddings, required_attr2, unq_attr2, filtered_weights)
+
+        return attr1_obj_mean, attr2_obj_mean, unq_attr1, unq_attr2
+
     def compute_ideal_words_approximation(self, target_triplet):  #handles triplets
         target_attr1_idx = torch.tensor(
             [self.attr1_idx[attr1] for attr1, _ in target_triplet],
@@ -262,6 +287,7 @@ class CompositionalFactorizer:
     def __str__(self) -> str:
         return self.name
 
+    
 
 class LDE(CompositionalFactorizer):
     name = 'LDE'
@@ -282,7 +308,7 @@ class LDE(CompositionalFactorizer):
 
     def get_denoised_triplets(self):  #handles triplets
         unique_triplets = list(set(self.all_triplets_gt))
-        denoised_triplets = compute_group_means(self.embs_for_IW, self.all_pairs_gt, unique_triplets)
+        denoised_triplets = compute_group_means(self.embs_for_IW, self.all_triplets_gt, unique_triplets)
         return unique_triplets, denoised_triplets
 
 
