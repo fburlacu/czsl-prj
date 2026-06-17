@@ -8,6 +8,6 @@ DATASET_PATHS = {
     "ut-zappos": get_abs_path("../data/ut-zappos"),
     "waterbirds": get_abs_path("../data/waterbirds"),
     "celebA": get_abs_path("../data/celebA"),
-    "3_attribute_dataset_5x5x5": get_abs_path("../data/3_attribute_dataset_5x5x5"),
     "3_attribute_dataset": get_abs_path("../data/3_attribute_dataset"),
+    "3_attributes": get_abs_path("../data/3_attributes"),
 }
