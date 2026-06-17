@@ -6,7 +6,7 @@
         "experiment_name": "GDE",
         "modality_IW": "image",
         "n_images": null,
-        "open_world": false,
+        "open_world": true,
         "n_exp": 1,
         "test_phase": "test",
         "result_path": "results_GDE_image.json"
