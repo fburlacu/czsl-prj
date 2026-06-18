@@ -8,10 +8,7 @@ from tqdm import tqdm
 from math import exp
 from collections import defaultdict
 from scipy.stats import hmean
-from conditional_eval import run_conditional_eval
 
-import warnings
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 from datasets.read_datasets import DATASET_PATHS
 from datasets.composition_dataset import CompositionDatasetEmbeddings
@@ -571,111 +568,116 @@ def main(config: argparse.Namespace, verbose=False):
             #     target_pairs=test_dataset.pairs
             #     )
 
-             # ── GDE/LDE conditional eval, open/closed world, paper-style metrics ──
-            result = run_conditional_eval(factorizer, test_dataset, device)
-
-        #     #FOR CONDITIOOOOOOOOOOOOONAL
-        #     image_embs, all_triplets_true = test_dataset.load_all_image_embs()
-        #     image_embs = image_embs.to(device)
-
-        #     #test for objects, we wanna go thru all |O| (ALL OBJECTS AND FIND THE BEST ONE)
-        #     #we get object embedding from training.
-        #     obj_embs, unique_objs  = factorizer.compute_obj_means(factorizer.embs_for_IW, factorizer.all_triplets_gt, factorizer.weights)
-        #     obj_scores = compute_logits(image_embs, obj_embs.to(device)) 
-        #     best_object_index = obj_scores.argmax(dim = 1)
-        #     best_object_names = [unique_objs[i] for i in best_object_index.tolist()] 
-
-        #     unique_predicted_objs = sorted(set(best_object_names))
-        #     attr1_embs_cond_obj  = {}
-        #     attr2_embs_cond_obj  = {}
-        #     attr1_names_cond_obj = {}
-        #     attr2_names_cond_obj = {}
 
 
-        #     for obj in unique_predicted_objs: 
-        #         attr1_emb, attr2_emd, unq_attr1, unq_attr2  = factorizer.compute_attr_means(obj)
-        #         attr1_embs_cond_obj[obj] = attr1_emb
-        #         attr2_embs_cond_obj[obj] = attr2_emd
-        #         attr1_names_cond_obj[obj] = unq_attr1
-        #         attr2_names_cond_obj[obj] = unq_attr2
+            #FOR CONDITIOOOOOOOOOOOOONAL
+            # --- START OF CONDITIONAL GDE/LDE EVALUATION ---
+            image_embs, all_triplets_true = test_dataset.load_all_image_embs()
+            image_embs = image_embs.to(device)
+
+            # 1. PREDICT THE OBJECT FIRST
+            unique_objs = factorizer.objs
+            obj_embs = []
+            for obj in unique_objs:
+                # Get the pure object direction and map it (triggers GDE/LDE math)
+                obj_iw = factorizer.get_obj_IW(obj)
+                obj_embs.append(factorizer.combine_ideal_words(obj_iw).squeeze())
             
-        #     attr1_prediction , attr2_prediction = [], []
+            obj_embs = torch.stack(obj_embs).to(device)
 
-        #     for i in range(len(image_embs)):
-        #         obj = best_object_names[i]
-        #         img = image_embs[i].unsqueeze(0)   
+            # Find the best object for each image
+            obj_logits = compute_logits(image_embs, obj_embs)
+            best_object_indices = obj_logits.argmax(dim=1)
+            best_object_names = [unique_objs[i] for i in best_object_indices.tolist()]
 
-        #         attr1_logit = compute_logits(img, attr1_embs_cond_obj[obj].to(device)).unsqueeze(0)
-        #         attr2_logit = compute_logits(img, attr2_embs_cond_obj[obj].to(device)).unsqueeze(0)
-
-        #         best_attr1 = attr1_names_cond_obj[obj][attr1_logit.argmax().item()] 
-        #         best_attr2 = attr2_names_cond_obj[obj][attr2_logit.argmax().item()] 
-
-        #         attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
-        #         attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
-
-        #     obj_f2d     = torch.LongTensor(
-        #                 [test_dataset.obj2idx[o] for o in unique_objs]).to(device)
+            # 2. PRECOMPUTE CONDITIONAL ATTRIBUTES
+            unique_attrs1 = factorizer.attrs1
+            unique_attrs2 = factorizer.attrs2
             
-        #     attr1_preds = torch.LongTensor(attr1_prediction)
-        #     attr2_preds = torch.LongTensor(attr2_prediction)
-        #     obj_preds = obj_f2d[best_object_index]
+            cond_attr1_embs = {}
+            cond_attr2_embs = {}
             
+            for obj in unique_objs:
+                obj_iw = factorizer.get_obj_IW(obj)
+           
+                cond_attr1_embs[obj] = torch.stack([
+                    factorizer.compute_attr1_given_obj(a1, obj)
+                    for a1 in unique_attrs1
+                ]).to(device)                                 
+
+                
+          
+                cond_attr2_embs[obj] = torch.stack([
+                    factorizer.compute_attr2_given_obj(a2, obj)
+                    for a2 in unique_attrs2
+                ]).to(device) 
+
+            # 3. PREDICT ATTRIBUTES CONDITIONED ON THE PREDICTED OBJECT
+            attr1_prediction = []
+            attr2_prediction = []
+
+            for i in range(len(image_embs)):
+                obj = best_object_names[i]
+                img = image_embs[i].unsqueeze(0)   
+
+                # Test against attr1+obj combinations
+                attr1_logit = compute_logits(img, cond_attr1_embs[obj])
+                best_attr1_idx = attr1_logit.argmax().item()
+                best_attr1 = unique_attrs1[best_attr1_idx]
+                
+                # Test against attr2+obj combinations
+                attr2_logit = compute_logits(img, cond_attr2_embs[obj])
+                best_attr2_idx = attr2_logit.argmax().item()
+                best_attr2 = unique_attrs2[best_attr2_idx]
+
+                attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+
+            # 4. EVALUATE
+            obj_preds = torch.LongTensor([test_dataset.obj2idx[o] for o in best_object_names])
+            attr1_preds = torch.LongTensor(attr1_prediction)
+            attr2_preds = torch.LongTensor(attr2_prediction)
             
-        #     evaluator = Evaluator(test_dataset)
-        #     labels = torch.LongTensor([test_dataset.triplet2idx[t] for t in all_triplets_true])
+            evaluator = Evaluator(test_dataset)
+            labels = torch.LongTensor([test_dataset.triplet2idx[t] for t in all_triplets_true])
+            attr1_true, attr2_true, obj_true = evaluator.get_attr1_attr2_obj_from_triplets(labels)
+
+            seen_ids = [i for i in range(len(all_triplets_true)) if all_triplets_true[i] in evaluator.seen_triplets_set]
+            unseen_ids = [i for i in range(len(all_triplets_true)) if all_triplets_true[i] not in evaluator.seen_triplets_set]
+
+            def acc_new(pred, true):
+                correct = (pred == true).cpu().numpy()
+                return{
+                    "all_acc" : correct.mean(),
+                    "seen_acc" : correct[seen_ids].mean() if len(seen_ids) > 0 else float('nan'),
+                    "unseen_acc" : correct[unseen_ids].mean() if len(unseen_ids) > 0 else float('nan')
+                }
             
-        #     attr1_true, attr2_true, obj_true = evaluator.get_attr1_attr2_obj_from_triplets(labels)
+            attr1_acc = acc_new(attr1_preds, attr1_true)
+            attr2_acc = acc_new(attr2_preds, attr2_true)
+            obj_acc = acc_new(obj_preds, obj_true)
 
-        #     seen_ids = [
-        #         i for i in range(len(all_triplets_true))
-        #         if all_triplets_true[i] in evaluator.seen_triplets_set
-        #     ]
-        #     unseen_ids = [
-        #         i for i in range(len(all_triplets_true))
-        #         if all_triplets_true[i] not in evaluator.seen_triplets_set
-        #     ]
+            triplet_correct = (attr1_preds == attr1_true) & (attr2_preds == attr2_true) & (obj_preds == obj_true)
+            triplet_correct = triplet_correct.cpu().numpy()
 
-
-        #     def acc_new(pred, true):
-        #         correct = (pred == true).cpu().numpy()
-        #         return{
-        #             "all_acc" : correct.mean(),
-        #             "seen_acc" : correct[seen_ids].mean(),
-        #             "unseen_acc" : correct[unseen_ids].mean()
-        #         }
+            result = {
+                "attr1_acc":          attr1_acc["all_acc"],
+                "attr2_acc":          attr2_acc["all_acc"],
+                "obj_acc":            obj_acc["all_acc"],
+                "seen_attr1_acc":     attr1_acc["seen_acc"],
+                "unseen_attr1_acc":   attr1_acc["unseen_acc"],
+                "seen_attr2_acc":     attr2_acc["seen_acc"],
+                "unseen_attr2_acc":   attr2_acc["unseen_acc"],
+                "seen_obj_acc":       obj_acc["seen_acc"],
+                "unseen_obj_acc":     obj_acc["unseen_acc"],
+                "triplet_acc":        triplet_correct.mean(),
+                "seen_triplet_acc":   triplet_correct[seen_ids].mean() if len(seen_ids) > 0 else float('nan'),
+                "unseen_triplet_acc": triplet_correct[unseen_ids].mean() if len(unseen_ids) > 0 else float('nan'),
+            }
+        
+        ## CREEATE VIZ: 
+        # --- START TARGETED 2x2x2 VISUALIZATION ---
             
-        #     attr1_acc = acc_new(attr1_preds, attr1_true)
-        #     attr2_acc = acc_new(attr2_preds, attr2_true)
-        #     obj_acc = acc_new(obj_preds, obj_true)
-
-        #     result = {
-        #     "attr1_acc": attr1_acc["all_acc"],
-        #     "attr2_acc": attr2_acc["all_acc"],
-        #     "obj_acc": obj_acc["all_acc"],
-        # }
-        #     attr1_correct   = torch.eq(attr1_preds, attr1_true)
-        #     attr2_correct   = torch.eq(attr2_preds, attr2_true)
-        #     obj_correct     = torch.eq(obj_preds,   obj_true)
-        #     triplet_correct = (attr1_correct & attr2_correct & obj_correct).numpy()
-
-
-        #     result = {
-        #     "attr1_acc":          attr1_acc["all_acc"],
-        #     "attr2_acc":          attr2_acc["all_acc"],
-        #     "obj_acc":            obj_acc["all_acc"],
-        #     "seen_attr1_acc":     attr1_acc["seen_acc"],
-        #     "unseen_attr1_acc":   attr1_acc["unseen_acc"],
-        #     "seen_attr2_acc":     attr2_acc["seen_acc"],
-        #     "unseen_attr2_acc":   attr2_acc["unseen_acc"],
-        #     "seen_obj_acc":       obj_acc["seen_acc"],
-        #     "unseen_obj_acc":     obj_acc["unseen_acc"],
-        #     "triplet_acc":        triplet_correct.mean(),
-        #     "seen_triplet_acc":   triplet_correct[seen_ids].mean(),
-        #     "unseen_triplet_acc": triplet_correct[unseen_ids].mean(),
-        # }
-
-
 
             #USUAL WAY
             # test_triplets_embs = test_triplets_embs.to(device)

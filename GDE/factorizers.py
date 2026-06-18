@@ -211,6 +211,42 @@ class CompositionalFactorizer:
     def get_obj_IW(self, obj):
         obj_idx = self.obj2idx[obj]
         return self.obj_IW[obj_idx]
+    
+
+
+    def compute_attr1_given_obj(self, attr1, obj):
+        a1_iw  = self.get_attr1_IW(attr1)
+        obj_iw = self.get_obj_IW(obj)
+
+        n_a2       = len(self.attrs2)
+        a2_IW_all  = self.attr2_IW                                    
+        a1_iw_matrix  = a1_iw.unsqueeze(0).expand(n_a2, -1)            
+        obj_iw_matrix = obj_iw.unsqueeze(0).expand(n_a2, -1)           
+
+        composed = self.combine_ideal_words(
+            a1_iw_matrix, a2_IW_all, obj_iw_matrix
+        )                                                              
+
+        return composed.mean(dim=0)  
+    
+
+
+    def compute_attr2_given_obj(self, attr2, obj):
+ 
+        a2_iw  = self.get_attr2_IW(attr2)
+        obj_iw = self.get_obj_IW(obj)
+
+        n_a1       = len(self.attrs1)
+        a1_IW_all  = self.attr1_IW                                    
+        a2_iw_matrix  = a2_iw.unsqueeze(0).expand(n_a1, -1)             
+        obj_iw_matrix = obj_iw.unsqueeze(0).expand(n_a1, -1)            
+
+        composed = self.combine_ideal_words(
+            a1_IW_all, a2_iw_matrix, obj_iw_matrix
+        )                                                             
+
+        return composed.mean(dim=0) 
+    
 
     # def compute_ideal_words_approximation(self, target_pairs):
     #     target_attr_idx = torch.tensor(
