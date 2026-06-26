@@ -259,8 +259,8 @@ class Evaluator:
             auc = np.trapz(seen_accs, unseen_accs)
 
             overall_metrics[topk] = {
-                #"seen_accs": seen_accs.tolist(),
-                #"unseen_accs": unseen_accs.tolist(),
+                "seen_accs": seen_accs.tolist(),
+                "unseen_accs": unseen_accs.tolist(),
                 # "unbiased_pair_acc": unbiased_pair_acc,
                 "unbiased_triplets_acc": unbiased_triplets_acc,
                 "attr1_acc": attr1_acc,
