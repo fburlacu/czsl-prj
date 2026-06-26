@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+from GDE.sphere import exponential_map, logarithmic_map
 import torch
 import numpy as np
 import random
@@ -612,26 +613,63 @@ def main(config: argparse.Namespace, verbose=False):
                     for a2 in unique_attrs2
                 ]).to(device) 
 
-            # 3. PREDICT ATTRIBUTES CONDITIONED ON THE PREDICTED OBJECT
+            # 3. PREDICT ATTRIBUTES CONDITIONED ON THE PREDICTED OBJECT  | gonna change this
+
+
+       
             attr1_prediction = []
             attr2_prediction = []
 
-            for i in range(len(image_embs)):
-                obj = best_object_names[i]
-                img = image_embs[i].unsqueeze(0)   
 
-                # Test against attr1+obj combinations
-                attr1_logit = compute_logits(img, cond_attr1_embs[obj])
-                best_attr1_idx = attr1_logit.argmax().item()
-                best_attr1 = unique_attrs1[best_attr1_idx]
-                
-                # Test against attr2+obj combinations
-                attr2_logit = compute_logits(img, cond_attr2_embs[obj])
-                best_attr2_idx = attr2_logit.argmax().item()
-                best_attr2 = unique_attrs2[best_attr2_idx]
 
-                attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
-                attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+            if config.seq: 
+
+                for i in range(len(image_embs)):
+                    obj = best_object_names[i]
+                    img = image_embs[i].unsqueeze(0)   
+
+                    # Test against attr1+obj combinations
+                    attr1_logit = compute_logits(img, cond_attr1_embs[obj])
+                    best_attr1_idx = attr1_logit.argmax().item()
+                    best_attr1 = unique_attrs1[best_attr1_idx]
+                    
+                    # Test against attr2+obj combinations
+                    attr2_logit = compute_logits(img, cond_attr2_embs[obj])
+                    best_attr2_idx = attr2_logit.argmax().item()
+                    best_attr2 = unique_attrs2[best_attr2_idx]
+
+                    attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                    attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+            else:
+                  for i in range(len(image_embs)):  # we have many images and we do it per image
+                    obj = best_object_names[i]
+                    img = image_embs[i].unsqueeze(0)
+                    a1_embeddings = cond_attr1_embs[obj]   #attr1|best_obj
+                    a2_embeddings = cond_attr2_embs[obj]   #attr2|best_obj
+
+                    a1_len , a2_len = a1_embeddings.shape[0], a2_embeddings.shape[0]
+
+                    #get all possible combination of attr1|best_obj , attr2|best_obj
+                    a1_list = a1_embeddings.unsqueeze(1).expand(-1, a2_len, -1).reshape(-1, a1_embeddings.shape[-1])  #expand and repeat
+                    a2_list = a2_embeddings.unsqueeze(0).expand(a1_len, -1, -1).reshape(-1, a2_embeddings.shape[-1])  
+
+                    a1_euclid = logarithmic_map(factorizer.context, a1_list)
+                    a2_euclid = logarithmic_map(factorizer.context, a2_list)
+
+                    combined = a1_euclid + a2_euclid  #on the tangent space
+                    new_combined = exponential_map(factorizer.context, combined) 
+
+                    joint_logits = compute_logits(img, new_combined.to(device)) 
+                    best_idx    = joint_logits.argmax().item()
+                    best_a1_idx = best_idx // a2_len    
+                    best_a2_idx = best_idx %  a2_len
+
+                    best_attr1 = unique_attrs1[best_a1_idx]
+                    best_attr2 = unique_attrs2[best_a2_idx]
+
+                    attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                    attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+
 
             # 4. EVALUATE
             obj_preds = torch.LongTensor([test_dataset.obj2idx[o] for o in best_object_names])
