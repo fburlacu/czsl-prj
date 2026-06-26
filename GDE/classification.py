@@ -587,9 +587,14 @@ def main(config: argparse.Namespace, verbose=False):
             obj_embs = torch.stack(obj_embs).to(device)
 
             # Find the best object for each image
-            obj_logits = compute_logits(image_embs, obj_embs)
-            best_object_indices = obj_logits.argmax(dim=1)
-            best_object_names = [unique_objs[i] for i in best_object_indices.tolist()]
+            if config.topk > 1:
+                obj_logits = compute_logits(image_embs, obj_embs)
+                best_object_indices = obj_logits.topk(k=config.topk, dim=1).indices
+                best_object_names = [[unique_objs[i] for i in indices.tolist()] for indices in best_object_indices]
+            else:
+                obj_logits = compute_logits(image_embs, obj_embs)
+                best_object_indices = obj_logits.argmax(dim=1)
+                best_object_names = [unique_objs[i] for i in best_object_indices.tolist()]
 
             # 2. PRECOMPUTE CONDITIONAL ATTRIBUTES
             unique_attrs1 = factorizer.attrs1
@@ -625,50 +630,121 @@ def main(config: argparse.Namespace, verbose=False):
             if config.seq: 
 
                 for i in range(len(image_embs)):
-                    obj = best_object_names[i]
-                    img = image_embs[i].unsqueeze(0)   
+                    img = image_embs[i].unsqueeze(0)
+                    if config.topk > 1:
+                        best_objs = best_object_names[i]  # take the top-k object for sequential prediction
+                        triplets = []
+                        scores = []
+                        for obj in best_objs:
+                            # Test against attr1+obj combinations
+                            attr1_logit = compute_logits(img, cond_attr1_embs[obj])
+                            best_attr1_idx = attr1_logit.argmax().item()
+                            best_attr1 = unique_attrs1[best_attr1_idx]
+                            
+                            # Test against attr2+obj combinations
+                            attr2_logit = compute_logits(img, cond_attr2_embs[obj])
+                            best_attr2_idx = attr2_logit.argmax().item()
+                            best_attr2 = unique_attrs2[best_attr2_idx]
 
-                    # Test against attr1+obj combinations
-                    attr1_logit = compute_logits(img, cond_attr1_embs[obj])
-                    best_attr1_idx = attr1_logit.argmax().item()
-                    best_attr1 = unique_attrs1[best_attr1_idx]
-                    
-                    # Test against attr2+obj combinations
-                    attr2_logit = compute_logits(img, cond_attr2_embs[obj])
-                    best_attr2_idx = attr2_logit.argmax().item()
-                    best_attr2 = unique_attrs2[best_attr2_idx]
+                            #now compute the triplet score from the sphere
+                            a1_emb = cond_attr1_embs[obj][best_attr1_idx]
+                            a2_emb = cond_attr2_embs[obj][best_attr2_idx]
+                            obj_emb = obj_embs[unique_objs.index(obj)]
 
-                    attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
-                    attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+                            triplet_emb = factorizer.combine_ideal_words(a1_emb, a2_emb, obj_emb)
+                            triplet_score = compute_logits(img, triplet_emb.unsqueeze(0)).item()
+
+                            triplets.append((best_attr1, best_attr2, obj))
+                            scores.append(triplet_score)
+                        best_triplet_idx = int(np.argmax(scores))
+                        best_attr1, best_attr2, best_obj = triplets[best_triplet_idx]
+
+                        attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                        attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+                        best_object_names[i] = best_obj
+                    else: 
+                        obj = best_object_names[i]
+                        # Test against attr1+obj combinations
+                        attr1_logit = compute_logits(img, cond_attr1_embs[obj])
+                        best_attr1_idx = attr1_logit.argmax().item()
+                        best_attr1 = unique_attrs1[best_attr1_idx]
+                        
+                        # Test against attr2+obj combinations
+                        attr2_logit = compute_logits(img, cond_attr2_embs[obj])
+                        best_attr2_idx = attr2_logit.argmax().item()
+                        best_attr2 = unique_attrs2[best_attr2_idx]
+
+                        attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                        attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
             else:
                   for i in range(len(image_embs)):  # we have many images and we do it per image
-                    obj = best_object_names[i]
-                    img = image_embs[i].unsqueeze(0)
-                    a1_embeddings = cond_attr1_embs[obj]   #attr1|best_obj
-                    a2_embeddings = cond_attr2_embs[obj]   #attr2|best_obj
+                    if config.topk > 1:
+                        best_objs = best_object_names[i]  # take the top-k object for sequential prediction
+                        triplets = []
+                        scores = []
+                        for obj in best_objs:
+                            a1_embeddings = cond_attr1_embs[obj]   #attr1|best_obj
+                            a2_embeddings = cond_attr2_embs[obj]   #attr2|best_obj
 
-                    a1_len , a2_len = a1_embeddings.shape[0], a2_embeddings.shape[0]
+                            a1_len , a2_len = a1_embeddings.shape[0], a2_embeddings.shape[0]
 
-                    #get all possible combination of attr1|best_obj , attr2|best_obj
-                    a1_list = a1_embeddings.unsqueeze(1).expand(-1, a2_len, -1).reshape(-1, a1_embeddings.shape[-1])  #expand and repeat
-                    a2_list = a2_embeddings.unsqueeze(0).expand(a1_len, -1, -1).reshape(-1, a2_embeddings.shape[-1])  
+                            #get all possible combination of attr1|best_obj , attr2|best_obj
+                            a1_list = a1_embeddings.unsqueeze(1).expand(-1, a2_len, -1).reshape(-1, a1_embeddings.shape[-1])  #expand and repeat
+                            a2_list = a2_embeddings.unsqueeze(0).expand(a1_len, -1, -1).reshape(-1, a2_embeddings.shape[-1])  
 
-                    a1_euclid = logarithmic_map(factorizer.context, a1_list)
-                    a2_euclid = logarithmic_map(factorizer.context, a2_list)
+                            a1_euclid = logarithmic_map(factorizer.context, a1_list)
+                            a2_euclid = logarithmic_map(factorizer.context, a2_list)
 
-                    combined = a1_euclid + a2_euclid  #on the tangent space
-                    new_combined = exponential_map(factorizer.context, combined) 
+                            combined = a1_euclid + a2_euclid  #on the tangent space
+                            new_combined = exponential_map(factorizer.context, combined) 
 
-                    joint_logits = compute_logits(img, new_combined.to(device)) 
-                    best_idx    = joint_logits.argmax().item()
-                    best_a1_idx = best_idx // a2_len    
-                    best_a2_idx = best_idx %  a2_len
+                            joint_logits = compute_logits(img, new_combined.to(device)) 
+                            local_best_idx    = joint_logits.argmax().item()
 
-                    best_attr1 = unique_attrs1[best_a1_idx]
-                    best_attr2 = unique_attrs2[best_a2_idx]
+                            local_best_score = joint_logits[0, local_best_idx].item()
+                            local_best_a1_idx = local_best_idx // a2_len
+                            local_best_a2_idx = local_best_idx % a2_len
 
-                    attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
-                    attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+                            local_best_triplet = (
+                                unique_attrs1[local_best_a1_idx],
+                                unique_attrs2[local_best_a2_idx],
+                                obj,
+                            )
+
+                            triplets.append(local_best_triplet)
+                            scores.append(local_best_score)
+                        best_triplet_idx = int(np.argmax(scores))
+                        best_attr1, best_attr2, best_obj = triplets[best_triplet_idx]
+                        attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                        attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+                    else:
+                        obj = best_object_names[i]
+                        img = image_embs[i].unsqueeze(0)
+                        a1_embeddings = cond_attr1_embs[obj]   #attr1|best_obj
+                        a2_embeddings = cond_attr2_embs[obj]   #attr2|best_obj
+
+                        a1_len , a2_len = a1_embeddings.shape[0], a2_embeddings.shape[0]
+
+                        #get all possible combination of attr1|best_obj , attr2|best_obj
+                        a1_list = a1_embeddings.unsqueeze(1).expand(-1, a2_len, -1).reshape(-1, a1_embeddings.shape[-1])  #expand and repeat
+                        a2_list = a2_embeddings.unsqueeze(0).expand(a1_len, -1, -1).reshape(-1, a2_embeddings.shape[-1])  
+
+                        a1_euclid = logarithmic_map(factorizer.context, a1_list)
+                        a2_euclid = logarithmic_map(factorizer.context, a2_list)
+
+                        combined = a1_euclid + a2_euclid  #on the tangent space
+                        new_combined = exponential_map(factorizer.context, combined) 
+
+                        joint_logits = compute_logits(img, new_combined.to(device)) 
+                        best_idx    = joint_logits.argmax().item()
+                        best_a1_idx = best_idx // a2_len    
+                        best_a2_idx = best_idx %  a2_len
+
+                        best_attr1 = unique_attrs1[best_a1_idx]
+                        best_attr2 = unique_attrs2[best_a2_idx]
+
+                        attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
+                        attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
 
 
             # 4. EVALUATE
@@ -798,6 +874,14 @@ if __name__ == '__main__':
         "--result_path",
         help="path to json file. Result is saved here.",
         type=str, default=None)
-    
+    parser.add_argument(
+        "--seq",
+        help="whether to use sequential prediction of attributes or not",
+        action="store_true")
+    parser.add_argument(
+        "--obj_topk",
+        help="top-k accuracy to compute",
+        default=3, type=int)
+
     config = parser.parse_args()
     main(config, verbose=True)
