@@ -9,20 +9,26 @@
         "open_world": false,
         "n_exp": 1,
         "test_phase": "test",
-        "result_path": "results_GDE_image_individual.json"
+        "result_path": "results_GDE_image_individual.json",
+        "seq": false,
+        "topk": 0
     },
     "result": {
-        "attr1_acc": 0.9938941655359566,
-        "seen_attr1_acc": 0.9882121807465619,
-        "unseen_attr1_acc": 0.9968911917098445,
-        "attr2_acc": 0.9023066485753053,
-        "seen_attr2_acc": 0.9135559921414538,
-        "unseen_attr2_acc": 0.8963730569948186,
+        "attr1_acc": 0.9776119402985075,
+        "attr2_acc": 0.8575305291723202,
         "obj_acc": 0.9959294436906377,
+        "seen_attr1_acc": 0.9803536345776032,
+        "unseen_attr1_acc": 0.9761658031088083,
+        "harmonic_mean_attr1": 0.9782552369218729,
+        "harmonic_mean_attr2": 0.8502526896129253,
+        "seen_attr2_acc": 0.8290766208251473,
+        "unseen_attr2_acc": 0.8725388601036269,
         "seen_obj_acc": 0.9921414538310412,
         "unseen_obj_acc": 0.9979274611398964,
-        "triplet_acc": 0.8921302578018996,
-        "seen_triplet_acc": 0.8939096267190569,
-        "unseen_triplet_acc": 0.8911917098445595
+        "harmonic_mean_obj": 0.9950260462489718,
+        "triplet_acc": 0.8317503392130258,
+        "seen_triplet_acc": 0.8035363457760314,
+        "unseen_triplet_acc": 0.8466321243523316,
+        "harmonic_mean_triplet": 0.8245214906642254
     }
 }

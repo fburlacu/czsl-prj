@@ -1,0 +1,34 @@
+{
+    "config": {
+        "dataset": "3_attributes",
+        "model_architecture": "ViT-L-14",
+        "model_pretraining": "openai",
+        "experiment_name": "LDE",
+        "modality_IW": "image",
+        "n_images": null,
+        "open_world": false,
+        "n_exp": 1,
+        "test_phase": "test",
+        "result_path": "results_top1.json",
+        "seq": false,
+        "topk": 1
+    },
+    "result": {
+        "attr1_acc": 0.9742198100407056,
+        "attr2_acc": 0.8426051560379919,
+        "obj_acc": 0.991180461329715,
+        "seen_attr1_acc": 0.9724950884086444,
+        "unseen_attr1_acc": 0.9751295336787564,
+        "harmonic_mean_attr1": 0.9738105293087083,
+        "harmonic_mean_attr2": 0.8377536617422339,
+        "seen_attr2_acc": 0.8231827111984283,
+        "unseen_attr2_acc": 0.8528497409326425,
+        "seen_obj_acc": 0.9882121807465619,
+        "unseen_obj_acc": 0.9927461139896373,
+        "harmonic_mean_obj": 0.9904739588311408,
+        "triplet_acc": 0.8120759837177748,
+        "seen_triplet_acc": 0.7917485265225933,
+        "unseen_triplet_acc": 0.8227979274611399,
+        "harmonic_mean_triplet": 0.8069746709186536
+    }
+}
