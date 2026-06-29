@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from GDE.sphere import exponential_map, logarithmic_map
+from sphere import exponential_map, logarithmic_map
 import torch
 import numpy as np
 import random
@@ -652,7 +652,7 @@ def main(config: argparse.Namespace, verbose=False):
                             obj_emb = obj_embs[unique_objs.index(obj)]
 
                             triplet_emb = factorizer.combine_ideal_words(a1_emb, a2_emb, obj_emb)
-                            triplet_score = compute_logits(img, triplet_emb.unsqueeze(0)).item()
+                            triplet_score = compute_logits(img, triplet_emb.reshape(1,-1)).item()
 
                             triplets.append((best_attr1, best_attr2, obj))
                             scores.append(triplet_score)
@@ -679,6 +679,7 @@ def main(config: argparse.Namespace, verbose=False):
             else:
                   for i in range(len(image_embs)):  # we have many images and we do it per image
                     if config.topk > 1:
+                        img = image_embs[i].unsqueeze(0)
                         best_objs = best_object_names[i]  # take the top-k object for sequential prediction
                         triplets = []
                         scores = []
@@ -717,6 +718,7 @@ def main(config: argparse.Namespace, verbose=False):
                         best_attr1, best_attr2, best_obj = triplets[best_triplet_idx]
                         attr1_prediction.append(test_dataset.attr1_idx[best_attr1])
                         attr2_prediction.append(test_dataset.attr2_idx[best_attr2])
+                        best_object_names[i] = best_obj
                     else:
                         obj = best_object_names[i]
                         img = image_embs[i].unsqueeze(0)
@@ -885,7 +887,7 @@ if __name__ == '__main__':
         help="whether to use sequential prediction of attributes or not",
         action="store_true")
     parser.add_argument(
-        "--obj_topk",
+        "--topk",
         help="top-k accuracy to compute",
         default=3, type=int)
 
