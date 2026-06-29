@@ -764,7 +764,9 @@ def main(config: argparse.Namespace, verbose=False):
                 return{
                     "all_acc" : correct.mean(),
                     "seen_acc" : correct[seen_ids].mean() if len(seen_ids) > 0 else float('nan'),
-                    "unseen_acc" : correct[unseen_ids].mean() if len(unseen_ids) > 0 else float('nan')
+                    "unseen_acc" : correct[unseen_ids].mean() if len(unseen_ids) > 0 else float('nan'),
+                    "harmonic_mean": hmean([correct[seen_ids].mean(), correct[unseen_ids].mean()], axis=0) if len(seen_ids) > 0 and len(unseen_ids) > 0 else float('nan'),
+                    
                 }
             
             attr1_acc = acc_new(attr1_preds, attr1_true)
@@ -780,13 +782,17 @@ def main(config: argparse.Namespace, verbose=False):
                 "obj_acc":            obj_acc["all_acc"],
                 "seen_attr1_acc":     attr1_acc["seen_acc"],
                 "unseen_attr1_acc":   attr1_acc["unseen_acc"],
+                "harmonic_mean_attr1":  attr1_acc["harmonic_mean"],
+                "harmonic_mean_attr2":  attr2_acc["harmonic_mean"],
                 "seen_attr2_acc":     attr2_acc["seen_acc"],
                 "unseen_attr2_acc":   attr2_acc["unseen_acc"],
                 "seen_obj_acc":       obj_acc["seen_acc"],
                 "unseen_obj_acc":     obj_acc["unseen_acc"],
+                "harmonic_mean_obj":  obj_acc["harmonic_mean"],
                 "triplet_acc":        triplet_correct.mean(),
                 "seen_triplet_acc":   triplet_correct[seen_ids].mean() if len(seen_ids) > 0 else float('nan'),
                 "unseen_triplet_acc": triplet_correct[unseen_ids].mean() if len(unseen_ids) > 0 else float('nan'),
+                "harmonic_mean_triplet": hmean([triplet_correct[seen_ids].mean(), triplet_correct[unseen_ids].mean()], axis=0) if len(seen_ids) > 0 and len(unseen_ids) > 0 else float('nan'),
             }
         
         ## CREEATE VIZ: 
